@@ -84,8 +84,8 @@ export default function AdminLayout({
       </aside>
 
       <main className="min-h-screen lg:pl-64">
-        <header className="sticky top-0 z-30 flex h-20 items-center justify-between border-b border-slate-200 bg-white/95 px-6 backdrop-blur">
-          <div>
+        <header className="sticky top-0 z-30 flex min-h-20 items-center justify-between gap-4 border-b border-slate-200 bg-white/95 px-6 py-3 backdrop-blur">
+          <div className="shrink-0">
             <p className="text-sm font-medium text-slate-500">
               Administration
             </p>
@@ -95,7 +95,7 @@ export default function AdminLayout({
             </h2>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex shrink-0 items-center gap-3">
             <NotificationBell />
 
             <div className="hidden h-8 w-px bg-slate-200 sm:block" />

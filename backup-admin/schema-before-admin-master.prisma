@@ -1,0 +1,469 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  STUDENT
+  FACULTY
+  ADMIN
+}
+
+enum AssignmentStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         UserRole @default(STUDENT)
+
+  departmentId String?
+  courseId     String?
+  semesterId   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  department Department? @relation("DepartmentUsers", fields: [departmentId], references: [id], onDelete: SetNull)
+  course     Course?     @relation("CourseUsers", fields: [courseId], references: [id], onDelete: SetNull)
+  semester   Semester?   @relation("SemesterUsers", fields: [semesterId], references: [id], onDelete: SetNull)
+
+  attendance    Attendance[]
+  assignments   Assignment[]
+  notes         Note[]
+  exams         Exam[]
+  studySessions StudySession[]
+  testAttempts  TestAttempt[]
+
+  facultySubjects  SubjectFaculty[]
+  timetableEntries CampusTimetable[]
+
+  @@index([role])
+  @@index([departmentId])
+  @@index([courseId])
+  @@index([semesterId])
+}
+
+model Department {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  code        String   @unique
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users            User[]            @relation("DepartmentUsers")
+  courses          Course[]
+  timetableEntries CampusTimetable[]
+
+  @@index([active])
+}
+
+model Course {
+  id            String   @id @default(cuid())
+  name          String
+  code          String   @unique
+  durationYears Int      @default(4)
+  active        Boolean  @default(true)
+  departmentId  String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  department       Department          @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  semesters        Semester[]
+  users            User[]              @relation("CourseUsers")
+  subjects         Subject[]
+  academicExams    AcademicExam[]
+  timetables       AcademicTimetable[]
+  onlineTests      OnlineTest[]
+  timetableEntries CampusTimetable[]
+
+  @@index([departmentId])
+  @@index([active])
+}
+
+model Semester {
+  id        String   @id @default(cuid())
+  name      String
+  number    Int
+  courseId  String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  course           Course              @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  users            User[]              @relation("SemesterUsers")
+  subjects         Subject[]
+  academicExams    AcademicExam[]
+  timetables       AcademicTimetable[]
+  onlineTests      OnlineTest[]
+  timetableEntries CampusTimetable[]
+
+  @@unique([courseId, number])
+  @@index([courseId])
+  @@index([active])
+}
+
+model Subject {
+  id         String   @id @default(cuid())
+  name       String
+  code       String   @unique
+  credits    Int      @default(3)
+  courseId   String
+  semesterId String
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  course           Course              @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  semester         Semester            @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+  faculty          SubjectFaculty[]
+  academicExams    AcademicExam[]
+  timetables       AcademicTimetable[]
+  onlineTests      OnlineTest[]
+  timetableEntries CampusTimetable[]
+
+  @@index([courseId])
+  @@index([semesterId])
+  @@index([active])
+}
+
+model SubjectFaculty {
+  id        String   @id @default(cuid())
+  subjectId String
+  facultyId String
+  createdAt DateTime @default(now())
+
+  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  faculty User    @relation(fields: [facultyId], references: [id], onDelete: Cascade)
+
+  @@unique([subjectId, facultyId])
+  @@index([facultyId])
+  @@index([subjectId])
+}
+
+model Attendance {
+  id        String   @id @default(cuid())
+  userId    String
+  subject   String
+  date      DateTime
+  present   Boolean
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, date])
+}
+
+model Assignment {
+  id          String           @id @default(cuid())
+  userId      String
+  title       String
+  subject     String
+  description String?
+  dueDate     DateTime
+  status      AssignmentStatus @default(PENDING)
+  priority    String           @default("Medium")
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, dueDate])
+}
+
+model Note {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  subject   String
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, subject])
+}
+
+model Exam {
+  id          String   @id @default(cuid())
+  userId      String
+  subject     String
+  examDate    DateTime
+  description String?
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, examDate])
+}
+
+model StudySession {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  startTime DateTime
+  endTime   DateTime
+  completed Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, startTime])
+}
+
+model Announcement {
+  id          String    @id @default(cuid())
+  title       String
+  content     String
+  category    String    @default("GENERAL")
+  target      String    @default("ALL")
+  targetValue String?
+  published   Boolean   @default(false)
+  publishedAt DateTime?
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([published])
+  @@index([category])
+  @@index([publishedAt])
+  @@index([target])
+  @@index([expiresAt])
+}
+
+model CollegeInfo {
+  id          String   @id @default(cuid())
+  name        String
+  shortName   String?
+  description String?
+  address     String?
+  phone       String?
+  email       String?
+  website     String?
+  logoUrl     String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([active])
+}
+
+model AcademicTimetable {
+  id          String   @id @default(cuid())
+  title       String
+  dayOfWeek   String
+  startTime   String
+  endTime     String
+  room        String?
+  subjectId   String
+  courseId    String
+  semesterId  String
+  facultyName String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  subject  Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  course   Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  semester Semester @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+
+  @@index([courseId, semesterId, dayOfWeek])
+  @@index([subjectId])
+  @@index([active])
+}
+
+model AcademicExam {
+  id          String   @id @default(cuid())
+  title       String
+  examType    String   @default("TEST")
+  subjectId   String
+  courseId    String
+  semesterId  String
+  examDate    DateTime
+  startTime   String
+  endTime     String
+  room        String?
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  subject  Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  course   Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  semester Semester @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+
+  @@index([courseId, semesterId, examDate])
+  @@index([subjectId, examDate])
+  @@index([active])
+}
+
+model OnlineTest {
+  id              String    @id @default(cuid())
+  title           String
+  description     String?
+  subjectId       String
+  courseId        String
+  semesterId      String
+  durationMinutes Int       @default(30)
+  totalMarks      Int       @default(0)
+  passMarks       Int       @default(0)
+  startAt         DateTime?
+  endAt           DateTime?
+  published       Boolean   @default(false)
+  active          Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  subject  Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  course   Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  semester Semester @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+
+  questions TestQuestion[]
+  attempts  TestAttempt[]
+
+  @@index([courseId, semesterId])
+  @@index([subjectId])
+  @@index([published, active])
+}
+
+model TestQuestion {
+  id          String   @id @default(cuid())
+  testId      String
+  question    String
+  marks       Int      @default(1)
+  explanation String?
+  position    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  test    OnlineTest   @relation(fields: [testId], references: [id], onDelete: Cascade)
+  options TestOption[]
+
+  @@index([testId, position])
+}
+
+model TestOption {
+  id         String  @id @default(cuid())
+  questionId String
+  optionText String
+  isCorrect  Boolean @default(false)
+  position   Int     @default(0)
+
+  question TestQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([questionId, position])
+}
+
+model TestAttempt {
+  id          String    @id @default(cuid())
+  testId      String
+  userId      String
+  startedAt   DateTime  @default(now())
+  submittedAt DateTime?
+  score       Int       @default(0)
+  totalMarks  Int       @default(0)
+  passed      Boolean?
+  status      String    @default("IN_PROGRESS")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  test    OnlineTest   @relation(fields: [testId], references: [id], onDelete: Cascade)
+  user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  answers TestAnswer[]
+
+  @@unique([testId, userId])
+  @@index([userId])
+  @@index([testId])
+}
+
+model TestAnswer {
+  id         String   @id @default(cuid())
+  attemptId  String
+  questionId String
+  optionId   String?
+  answerText String?
+  marks      Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  attempt TestAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+
+  @@unique([attemptId, questionId])
+  @@index([attemptId])
+}
+
+model CampusTimetable {
+  id        String  @id @default(cuid())
+  day       String
+  startTime String
+  endTime   String
+  room      String?
+  section   String?
+  active    Boolean @default(true)
+
+  departmentId String
+  courseId     String
+  semesterId   String
+  subjectId    String
+  facultyId    String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  course     Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  semester   Semester   @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+  subject    Subject    @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  faculty    User       @relation(fields: [facultyId], references: [id], onDelete: Cascade)
+
+  @@index([departmentId])
+  @@index([courseId])
+  @@index([semesterId])
+  @@index([subjectId])
+  @@index([facultyId])
+  @@index([day])
+  @@index([active])
+}
+
+model CampusAcademicExam {
+  id String @id @default(cuid())
+
+  title        String
+  examType     String   @default("INTERNAL")
+  examDate     DateTime
+  startTime    String
+  endTime      String
+  duration     Int
+  venue        String?
+  totalMarks   Int      @default(100)
+  passingMarks Int      @default(40)
+  instructions String?
+  active       Boolean  @default(true)
+
+  departmentId String
+  courseId     String
+  semesterId   String
+  subjectId    String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([departmentId])
+  @@index([courseId])
+  @@index([semesterId])
+  @@index([subjectId])
+  @@index([examDate])
+  @@index([active])
+  @@index([examType])
+}

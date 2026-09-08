@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -47,13 +47,6 @@ export default function LoginPage() {
         return;
       }
 
-      /*
-       * Role-based redirect.
-       *
-       * ADMIN   -> /admin
-       * STUDENT -> /dashboard
-       * FACULTY -> /faculty
-       */
       if (data.redirectTo) {
         router.replace(data.redirectTo);
         router.refresh();
@@ -74,7 +67,6 @@ export default function LoginPage() {
       <div className="flex min-h-[calc(100vh-5rem)] items-center justify-center">
         <div className="w-full max-w-md">
 
-          {/* Logo / Brand */}
           <div className="mb-8 text-center">
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-600 shadow-lg shadow-blue-600/20">
               <GraduationCap className="h-9 w-9 text-white" />
@@ -89,7 +81,6 @@ export default function LoginPage() {
             </p>
           </div>
 
-          {/* Login Card */}
           <div className="rounded-3xl border border-slate-800 bg-slate-900 p-6 shadow-2xl sm:p-8">
 
             <div className="mb-7">
@@ -104,7 +95,6 @@ export default function LoginPage() {
 
             <form onSubmit={handleSubmit} className="space-y-5">
 
-              {/* ID / Email */}
               <div>
                 <label
                   htmlFor="email"
@@ -129,7 +119,6 @@ export default function LoginPage() {
                 </div>
               </div>
 
-              {/* Password */}
               <div>
                 <label
                   htmlFor="password"
@@ -169,14 +158,12 @@ export default function LoginPage() {
                 </div>
               </div>
 
-              {/* Error */}
               {error && (
                 <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
                   {error}
                 </div>
               )}
 
-              {/* Submit */}
               <button
                 type="submit"
                 disabled={loading}
@@ -193,10 +180,24 @@ export default function LoginPage() {
               </button>
             </form>
 
-            <p className="mt-6 text-center text-xs leading-5 text-slate-500">
-              Your account automatically opens the correct portal based on
-              your account role.
-            </p>
+            <div className="mt-6 space-y-4">
+              <p className="text-center text-xs leading-5 text-slate-500">
+                Your account automatically opens the correct portal based on
+                your account role.
+              </p>
+
+              <div className="border-t border-slate-800 pt-4 text-center">
+                <p className="text-sm text-slate-500">
+                  Don&apos;t have a student account?{" "}
+                  <a
+                    href="/register"
+                    className="font-semibold text-blue-400 transition hover:text-blue-300"
+                  >
+                    Create account
+                  </a>
+                </p>
+              </div>
+            </div>
           </div>
 
           <p className="mt-6 text-center text-xs text-slate-600">

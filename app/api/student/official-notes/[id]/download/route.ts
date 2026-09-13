@@ -1,14 +1,14 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
-import { supabaseAdmin } from "@/lib/supabase-admin";
+import { getSupabaseAdmin } from "@/lib/supabase-admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(
-  _request: NextRequest,
-  context: { params: Promise<{ id: string }> },
+  request: Request,
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     const cookieStore = await cookies();
@@ -16,26 +16,8 @@ export async function GET(
 
     if (!userId) {
       return NextResponse.json(
-        { success: false, error: "Authentication required" },
-        { status: 401 },
-      );
-    }
-
-    const student = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        role: true,
-        departmentId: true,
-        courseId: true,
-        semesterId: true,
-      },
-    });
-
-    if (!student || student.role !== "STUDENT") {
-      return NextResponse.json(
-        { success: false, error: "Student access required" },
-        { status: 403 },
+        { success: false, error: "Unauthorized" },
+        { status: 401 }
       );
     }
 
@@ -43,83 +25,64 @@ export async function GET(
 
     const note = await prisma.campusAcademicNote.findUnique({
       where: { id },
-      select: {
-        id: true,
-        title: true,
-        status: true,
-        active: true,
-        departmentId: true,
-        courseId: true,
-        semesterId: true,
-        fileUrl: true,
-        fileName: true,
-        fileType: true,
-        fileSize: true,
-      },
     });
 
-    if (!note) {
+    if (!note || !note.active) {
       return NextResponse.json(
         { success: false, error: "Note not found" },
-        { status: 404 },
-      );
-    }
-
-    if (note.status !== "PUBLISHED" || !note.active) {
-      return NextResponse.json(
-        { success: false, error: "This note is not available" },
-        { status: 403 },
+        { status: 404 }
       );
     }
 
     if (!note.fileUrl) {
       return NextResponse.json(
-        { success: false, error: "No PDF attachment is available" },
-        { status: 404 },
+        { success: false, error: "This note has no attachment" },
+        { status: 404 }
       );
     }
 
-    const hasAcademicAccess =
-      note.departmentId === student.departmentId &&
-      note.courseId === student.courseId &&
-      note.semesterId === student.semesterId;
+    const supabaseAdmin = getSupabaseAdmin();
 
-    if (!hasAcademicAccess) {
-      return NextResponse.json(
-        { success: false, error: "You do not have access to this note" },
-        { status: 403 },
-      );
+    const fileUrl = note.fileUrl;
+
+    if (
+      fileUrl.startsWith("http://") ||
+      fileUrl.startsWith("https://")
+    ) {
+      return NextResponse.redirect(fileUrl);
     }
+
+    const cleanPath = fileUrl.replace(/^\/+/, "");
 
     const { data, error } = await supabaseAdmin.storage
-      .from("campusmind-notes")
-      .createSignedUrl(note.fileUrl, 300);
+      .from("official-notes")
+      .createSignedUrl(cleanPath, 60 * 10);
 
     if (error || !data?.signedUrl) {
-      console.error("Failed to create signed PDF URL:", error);
+      console.error("SUPABASE SIGNED URL ERROR:", error);
 
       return NextResponse.json(
-        { success: false, error: "Unable to generate PDF access URL" },
-        { status: 500 },
+        {
+          success: false,
+          error: "Unable to generate download link",
+        },
+        { status: 500 }
       );
     }
 
-    return NextResponse.json({
-      success: true,
-      file: {
-        url: data.signedUrl,
-        fileName: note.fileName,
-        fileType: note.fileType,
-        fileSize: note.fileSize,
-        expiresIn: 300,
-      },
-    });
+    return NextResponse.redirect(data.signedUrl);
   } catch (error) {
-    console.error("Student note download error:", error);
+    console.error("OFFICIAL NOTE DOWNLOAD ERROR:", error);
 
     return NextResponse.json(
-      { success: false, error: "Internal server error" },
-      { status: 500 },
+      {
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Download failed",
+      },
+      { status: 500 }
     );
   }
 }

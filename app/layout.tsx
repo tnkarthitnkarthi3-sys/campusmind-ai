@@ -1,4 +1,5 @@
-﻿import type { Metadata } from "next";
+﻿import GlobalLogout from "@/components/auth/GlobalLogout";
+import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -13,7 +14,8 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>`r`n        <GlobalLogout />{children}</body>
     </html>
   );
 }
+

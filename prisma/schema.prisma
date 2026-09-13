@@ -7,29 +7,37 @@ datasource db {
 }
 
 model User {
-  id                 String              @id @default(cuid())
-  name               String
-  email              String              @unique
-  passwordHash       String
-  role               UserRole            @default(STUDENT)
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
-  courseId           String?
-  departmentId       String?
-  semesterId         String?
-  assignments        Assignment[]
-  attendance         Attendance[]
-  onlineTestAttempts CampusTestAttempt[]
-  timetableEntries   CampusTimetable[]
-  exams              Exam[]
-  notes              Note[]
-  notifications      Notification[]
-  studySessions      StudySession[]
-  facultySubjects    SubjectFaculty[]
-  testAttempts       TestAttempt[]
-  course             Course?             @relation("CourseUsers", fields: [courseId], references: [id])
-  department         Department?         @relation("DepartmentUsers", fields: [departmentId], references: [id])
-  semester           Semester?           @relation("SemesterUsers", fields: [semesterId], references: [id])
+  id           String @id @default(cuid())
+  name         String
+  email        String @unique
+  passwordHash String
+
+  rollNo      String?   @unique
+  age         Int?
+  phone       String?
+  dateOfBirth DateTime?
+  gender      String?
+
+  role                  UserRole               @default(STUDENT)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  courseId              String?
+  departmentId          String?
+  semesterId            String?
+  assignments           Assignment[]
+  attendance            Attendance[]
+  onlineTestAttempts    CampusTestAttempt[]
+  timetableEntries      CampusTimetable[]
+  exams                 Exam[]
+  notes                 Note[]
+  notifications         Notification[]
+  studySessions         StudySession[]
+  facultySubjects       SubjectFaculty[]
+  testAttempts          TestAttempt[]
+  course                Course?                @relation("CourseUsers", fields: [courseId], references: [id])
+  department            Department?            @relation("DepartmentUsers", fields: [departmentId], references: [id])
+  semester              Semester?              @relation("SemesterUsers", fields: [semesterId], references: [id])
+  assignmentSubmissions AssignmentSubmission[]
 
   @@index([role])
   @@index([departmentId])
@@ -529,24 +537,25 @@ model CampusTestAnswer {
 }
 
 model CampusAcademicAssignment {
-  id            String   @id @default(cuid())
-  title         String
-  description   String?
-  instructions  String?
-  departmentId  String
-  courseId      String
-  semesterId    String
-  subjectId     String
-  facultyId     String?
-  assignedDate  DateTime @default(now())
-  dueDate       DateTime
-  totalMarks    Int      @default(10)
-  priority      String   @default("MEDIUM")
-  status        String   @default("PUBLISHED")
-  attachmentUrl String?
-  active        Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id                    String                 @id @default(cuid())
+  title                 String
+  description           String?
+  instructions          String?
+  departmentId          String
+  courseId              String
+  semesterId            String
+  subjectId             String
+  facultyId             String?
+  assignedDate          DateTime               @default(now())
+  dueDate               DateTime
+  totalMarks            Int                    @default(10)
+  priority              String                 @default("MEDIUM")
+  status                String                 @default("PUBLISHED")
+  attachmentUrl         String?
+  active                Boolean                @default(true)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  assignmentSubmissions AssignmentSubmission[]
 
   @@index([departmentId])
   @@index([courseId])
@@ -633,6 +642,41 @@ model Notification {
   @@index([read])
   @@index([type])
   @@index([createdAt])
+}
+
+model AssignmentSubmission {
+  id           String @id @default(cuid())
+  assignmentId String
+  studentId    String
+
+  status String @default("SUBMITTED")
+
+  submissionUrl String?
+  fileName      String?
+  fileType      String?
+  fileSize      Int?
+
+  submittedAt DateTime?
+  updatedAt   DateTime  @updatedAt
+
+  marks    Float?
+  feedback String?
+  gradedAt DateTime?
+  gradedBy String?
+
+  attemptNumber Int @default(1)
+
+  createdAt DateTime @default(now())
+
+  assignment CampusAcademicAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  student    User                     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([assignmentId, studentId])
+  @@index([assignmentId])
+  @@index([studentId])
+  @@index([status])
+  @@index([submittedAt])
+  @@index([gradedAt])
 }
 
 enum UserRole {

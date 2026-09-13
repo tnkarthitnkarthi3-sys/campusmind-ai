@@ -54,14 +54,62 @@ export async function GET() {
         orderBy: {
           dueDate: "asc",
         },
+        include: {
+          assignmentSubmissions: {
+            where: {
+              studentId: userId,
+            },
+            select: {
+              id: true,
+              status: true,
+              submissionUrl: true,
+              fileName: true,
+              fileType: true,
+              fileSize: true,
+              submittedAt: true,
+              updatedAt: true,
+              marks: true,
+              feedback: true,
+              gradedAt: true,
+              attemptNumber: true,
+            },
+          },
+        },
       });
+
+    const now = new Date();
+
+    const enrichedAssignments = assignments.map((assignment) => {
+      const submission = assignment.assignmentSubmissions[0] ?? null;
+
+      let computedStatus = "PENDING";
+
+      if (submission) {
+        computedStatus = submission.status;
+      } else if (new Date(assignment.dueDate) < now) {
+        computedStatus = "OVERDUE";
+      }
+
+      return {
+        ...assignment,
+        submissions: undefined,
+        submission,
+        studentStatus: computedStatus,
+        isOverdue:
+          !submission &&
+          new Date(assignment.dueDate) < now,
+      };
+    });
 
     return NextResponse.json({
       success: true,
-      assignments,
+      assignments: enrichedAssignments,
     });
   } catch (error) {
-    console.error(error);
+    console.error(
+      "Official assignments API error:",
+      error
+    );
 
     return NextResponse.json(
       {

@@ -13,6 +13,9 @@ import {
   NotebookPen,
   Settings,
   Sparkles,
+  BrainCircuit,
+  FileCog,
+  Bot,
   Target,
   X,
 } from "lucide-react";
@@ -30,6 +33,11 @@ const navigation = [
   { label: "Notes", href: "/notes", icon: NotebookPen },
   { label: "Exams", href: "/exams", icon: GraduationCap },
   { label: "Updates", href: "/updates", icon: FileText },
+  { label: "AI Assistant", href: "/ai-assistant", icon: Bot },
+  { label: "Assignment AI", href: "/assignment-ai", icon: FileCog },
+  { label: "Smart Notes", href: "/smart-notes", icon: NotebookPen },
+  { label: "Intelligence", href: "/intelligence", icon: BrainCircuit },
+  { label: "Weak Subject Coach", href: "/weak-subject-coach", icon: BrainCircuit },
 ];
 
 export default function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
@@ -51,13 +59,20 @@ export default function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
         }`}
       >
         <div className="flex h-20 items-center justify-between border-b border-slate-100 px-6">
-          <Link href="/dashboard" className="flex items-center gap-3" onClick={onClose}>
+          <Link
+            href="/dashboard"
+            className="flex items-center gap-3"
+            onClick={onClose}
+          >
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-lg shadow-indigo-200">
               <Sparkles size={20} />
             </div>
+
             <div>
               <div className="font-bold text-slate-900">CampusMind AI</div>
-              <div className="text-[11px] text-slate-500">Student Workspace</div>
+              <div className="text-[11px] text-slate-500">
+                Student Workspace
+              </div>
             </div>
           </Link>
 
@@ -77,8 +92,10 @@ export default function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
           <nav className="space-y-1">
             {navigation.map((item) => {
               const Icon = item.icon;
+
               const active =
-                pathname === item.href || pathname.startsWith(`${item.href}/`);
+                pathname === item.href ||
+                pathname.startsWith(`${item.href}/`);
 
               return (
                 <Link
@@ -105,11 +122,18 @@ export default function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
               <Target size={17} />
               <span className="text-xs font-bold">Study goal</span>
             </div>
-            <p className="mt-2 text-sm font-semibold">Keep your weekly streak alive.</p>
+
+            <p className="mt-2 text-sm font-semibold">
+              Keep your weekly streak alive.
+            </p>
+
             <div className="mt-3 h-1.5 rounded-full bg-white/10">
               <div className="h-full w-[78%] rounded-full bg-indigo-400" />
             </div>
-            <p className="mt-2 text-[11px] text-slate-400">78% completed</p>
+
+            <p className="mt-2 text-[11px] text-slate-400">
+              78% completed
+            </p>
           </div>
 
           <Link

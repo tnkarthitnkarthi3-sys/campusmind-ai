@@ -1,15 +1,14 @@
-import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 
 const loginSchema = z.object({
-  email: z.string().trim().email("Enter a valid email address"),
-  password: z.string().min(1, "Password is required"),
+  email: z.string().email(),
+  password: z.string().min(1),
 });
 
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
     const body = await request.json();
 
@@ -19,28 +18,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          message: parsed.error.issues[0]?.message ?? "Invalid login details",
+          error: "Please enter a valid email and password.",
         },
         { status: 400 }
       );
     }
 
-    const email = parsed.data.email.toLowerCase();
-    const password = parsed.data.password;
+    const { email, password } = parsed.data;
 
     const user = await prisma.user.findUnique({
       where: {
-        email,
-      },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        passwordHash: true,
-        role: true,
-        departmentId: true,
-        courseId: true,
-        semesterId: true,
+        email: email.toLowerCase().trim(),
       },
     });
 
@@ -48,7 +36,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          message: "Invalid email or password",
+          error: "Invalid email or password.",
         },
         { status: 401 }
       );
@@ -63,51 +51,53 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          message: "Invalid email or password",
+          error: "Invalid email or password.",
         },
         { status: 401 }
       );
     }
 
-    const cookieStore = await cookies();
+    let redirectTo = "/dashboard";
 
-    cookieStore.set("campusmind_user_id", user.id, {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 7,
-    });
+    if (user.role === "ADMIN") {
+      redirectTo = "/admin";
+    } else if (user.role === "FACULTY") {
+      redirectTo = "/faculty";
+    } else if (user.role === "STUDENT") {
+      redirectTo = "/dashboard";
+    }
 
-    const redirectByRole = {
-      ADMIN: "/admin",
-      STUDENT: "/dashboard",
-      FACULTY: "/faculty",
-    } as const;
-
-    const redirectTo = redirectByRole[user.role];
-
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
-      message: "Login successful",
+      message: "Login successful.",
       redirectTo,
+      role: user.role,
       user: {
         id: user.id,
         name: user.name,
         email: user.email,
         role: user.role,
-        departmentId: user.departmentId,
-        courseId: user.courseId,
-        semesterId: user.semesterId,
       },
     });
+
+    response.cookies.set({
+      name: "campusmind_user_id",
+      value: user.id,
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 7,
+    });
+
+    return response;
   } catch (error) {
-    console.error("LOGIN_ERROR:", error);
+    console.error("Login error:", error);
 
     return NextResponse.json(
       {
         success: false,
-        message: "Unable to login. Please try again.",
+        error: "Unable to login. Please try again.",
       },
       { status: 500 }
     );

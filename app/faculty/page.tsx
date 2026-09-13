@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -448,7 +448,7 @@ export default function FacultyDashboardPage() {
                 {subjects.slice(0, 8).map(
                   (subject: any) => (
                     <div
-                      key={subject.id}
+                      key={String(subject.id ?? subject.code ?? "faculty-subject")}
                       className="rounded-xl border border-slate-200 p-4"
                     >
                       <div className="flex items-center justify-between gap-4">
@@ -468,7 +468,7 @@ export default function FacultyDashboardPage() {
                             {subject.course?.name ||
                               subject.subject?.course?.name ||
                               "-"}
-                            {" · "}
+                            {" Â· "}
                             {subject.semester?.name ||
                               subject.subject?.semester?.name ||
                               "-"}
@@ -513,7 +513,7 @@ export default function FacultyDashboardPage() {
 
                           <p className="mt-1 text-xs text-slate-500">
                             {item.day || "-"}
-                            {" · "}
+                            {" Â· "}
                             {item.startTime || "-"}
                             {" - "}
                             {item.endTime || "-"}
@@ -620,7 +620,7 @@ export default function FacultyDashboardPage() {
                           <p className="mt-1 text-xs text-slate-500">
                             {assignment.status ||
                               "Published"}
-                            {" · "}
+                            {" Â· "}
                             {assignment.priority ||
                               "MEDIUM"}
                           </p>

@@ -2,125 +2,118 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  BrainCircuit,
   CalendarDays,
   CheckCircle2,
   Clock3,
-  Edit3,
   Loader2,
-  Plus,
+  RefreshCw,
+  Sparkles,
   Target,
-  Trash2,
-  X,
   BookOpen,
-  ChevronLeft,
-  ChevronRight,
+  ClipboardList,
+  GraduationCap,
+  Lightbulb,
 } from "lucide-react";
 
-type StudySession = {
-  id: string;
-  title: string;
-  startTime: string;
-  endTime: string;
-  completed: boolean;
-  createdAt: string;
+type UpcomingItem = {
+  id?: string;
+  type?: "assignment" | "exam";
+  title?: string;
+  subject?: string;
+  date?: string;
+  priority?: string;
+  status?: string;
 };
 
-type Summary = {
-  total: number;
-  weeklyHours: number;
-  weeklyGoalHours: number;
-  weeklyPercentage: number;
-  remainingHours: number;
-  completedThisWeek: number;
-  todayCount: number;
-  upcomingCount: number;
+type DashboardData = {
+  success?: boolean;
+
+  user?: {
+    id?: string;
+    name?: string;
+    email?: string;
+    role?: string;
+  };
+
+  attendance?: {
+    total?: number;
+    present?: number;
+    absent?: number;
+    percentage?: number;
+    subjects?: Array<{
+      name?: string;
+      percentage?: number;
+      attendance?: string;
+    }>;
+  };
+
+  assignments?: {
+    total?: number;
+    pending?: number;
+    inProgress?: number;
+    completed?: number;
+  };
+
+  study?: {
+    weeklyHours?: number;
+    weeklyGoalHours?: number;
+    percentage?: number;
+    remainingHours?: number;
+    completedSessions?: number;
+    totalSessions?: number;
+  };
+
+  exams?: {
+    total?: number;
+    upcoming?: number;
+  };
+
+  upcoming?: UpcomingItem[];
 };
 
-const emptyForm = {
-  title: "",
-  date: "",
-  startTime: "",
-  endTime: "",
+type PlannerResponse = {
+  success: boolean;
+  plan?: string;
+  message?: string;
 };
-
-function formatTime(value: string) {
-  return new Date(value).toLocaleTimeString("en-IN", {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
-function formatDate(value: string) {
-  return new Date(value).toLocaleDateString("en-IN", {
-    weekday: "short",
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
-}
-
-function getDuration(start: string, end: string) {
-  const hours =
-    (new Date(end).getTime() - new Date(start).getTime()) /
-    (1000 * 60 * 60);
-
-  return Math.max(0, hours);
-}
-
-function toDateInput(value: string) {
-  const date = new Date(value);
-
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
-}
-
-function toTimeInput(value: string) {
-  const date = new Date(value);
-
-  const hours = String(date.getHours()).padStart(2, "0");
-  const minutes = String(date.getMinutes()).padStart(2, "0");
-
-  return `${hours}:${minutes}`;
-}
 
 export default function PlannerPage() {
-  const [sessions, setSessions] = useState<StudySession[]>([]);
-  const [summary, setSummary] = useState<Summary | null>(null);
-
+  const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [plan, setPlan] = useState("");
   const [error, setError] = useState("");
 
-  const [showModal, setShowModal] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-
-  const [form, setForm] = useState(emptyForm);
-
-  const [selectedDate, setSelectedDate] = useState(new Date());
-
-  async function loadPlanner() {
+  async function loadDashboard() {
     try {
       setLoading(true);
       setError("");
 
-      const response = await fetch("/api/study-sessions", {
+      const response = await fetch("/api/dashboard", {
+        method: "GET",
         cache: "no-store",
+        credentials: "include",
       });
 
       const data = await response.json();
 
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to load planner");
+      if (!response.ok || !data.success) {
+        throw new Error(
+          data?.message || "Unable to load academic data."
+        );
       }
 
-      setSessions(data.sessions || []);
-      setSummary(data.summary || null);
+      console.log("CampusMind Planner Dashboard:", data);
+
+      setDashboard(data);
     } catch (err) {
+      console.error(err);
+
       setError(
-        err instanceof Error ? err.message : "Failed to load planner"
+        err instanceof Error
+          ? err.message
+          : "Unable to load your academic data."
       );
     } finally {
       setLoading(false);
@@ -128,811 +121,653 @@ export default function PlannerPage() {
   }
 
   useEffect(() => {
-    loadPlanner();
+    loadDashboard();
   }, []);
 
-  const selectedDaySessions = useMemo(() => {
-    return sessions
-      .filter((session) => {
-        const sessionDate = new Date(session.startTime);
+  /*
+   * IMPORTANT:
+   * /api/dashboard returns:
+   *
+   * assignments = summary object
+   * exams = summary object
+   * attendance.subjects = actual subjects
+   * upcoming = mixed assignment/exam records
+   */
 
-        return (
-          sessionDate.getFullYear() === selectedDate.getFullYear() &&
-          sessionDate.getMonth() === selectedDate.getMonth() &&
-          sessionDate.getDate() === selectedDate.getDate()
-        );
-      })
-      .sort(
-        (a, b) =>
-          new Date(a.startTime).getTime() -
-          new Date(b.startTime).getTime()
-      );
-  }, [sessions, selectedDate]);
-
-  const upcomingSessions = useMemo(() => {
-    return sessions
-      .filter(
-        (session) =>
-          new Date(session.startTime) >= new Date() &&
-          !session.completed
-      )
-      .sort(
-        (a, b) =>
-          new Date(a.startTime).getTime() -
-          new Date(b.startTime).getTime()
-      )
-      .slice(0, 5);
-  }, [sessions]);
-
-  const completedSessions = useMemo(
-    () => sessions.filter((session) => session.completed),
-    [sessions]
+  const upcoming = useMemo<UpcomingItem[]>(
+    () => dashboard?.upcoming ?? [],
+    [dashboard]
   );
 
-  function openAddModal() {
-    const date = selectedDate;
-    const dateValue = `${date.getFullYear()}-${String(
-      date.getMonth() + 1
-    ).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  const assignments = useMemo(
+    () =>
+      upcoming.filter(
+        (item) => item.type === "assignment"
+      ),
+    [upcoming]
+  );
 
-    setEditingId(null);
+  const exams = useMemo(
+    () =>
+      upcoming.filter(
+        (item) => item.type === "exam"
+      ),
+    [upcoming]
+  );
 
-    setForm({
-      title: "",
-      date: dateValue,
-      startTime: "09:00",
-      endTime: "10:00",
-    });
+  const subjects = useMemo(
+    () => dashboard?.attendance?.subjects ?? [],
+    [dashboard]
+  );
 
-    setShowModal(true);
-  }
+  const pendingAssignments = useMemo(
+    () =>
+      assignments.filter(
+        (item) =>
+          String(item.status || "").toUpperCase() !==
+            "COMPLETED" &&
+          String(item.status || "").toUpperCase() !==
+            "DONE"
+      ),
+    [assignments]
+  );
 
-  function openEditModal(session: StudySession) {
-    setEditingId(session.id);
+  const highPriorityAssignments = useMemo(
+    () =>
+      pendingAssignments.filter(
+        (item) =>
+          String(item.priority || "").toUpperCase() ===
+          "HIGH"
+      ),
+    [pendingAssignments]
+  );
 
-    setForm({
-      title: session.title,
-      date: toDateInput(session.startTime),
-      startTime: toTimeInput(session.startTime),
-      endTime: toTimeInput(session.endTime),
-    });
+  const weeklyHours =
+    dashboard?.study?.weeklyHours ?? 0;
 
-    setShowModal(true);
-  }
+  const goalHours =
+    dashboard?.study?.weeklyGoalHours ?? 20;
 
-  function closeModal() {
-    if (saving) return;
+  const studyPercentage =
+    dashboard?.study?.percentage ??
+    Math.min(
+      100,
+      Math.round(
+        (weeklyHours / Math.max(goalHours, 1)) * 100
+      )
+    );
 
-    setShowModal(false);
-    setEditingId(null);
-    setForm(emptyForm);
-  }
-
-  async function saveSession() {
-    if (!form.title.trim()) {
-      setError("Please enter a study session title.");
-      return;
-    }
-
-    if (!form.date || !form.startTime || !form.endTime) {
-      setError("Please complete the date and time fields.");
-      return;
-    }
-
-    const start = new Date(`${form.date}T${form.startTime}`);
-    const end = new Date(`${form.date}T${form.endTime}`);
-
-    if (end <= start) {
-      setError("End time must be after start time.");
-      return;
-    }
-
+  async function generatePlan() {
     try {
-      setSaving(true);
+      setGenerating(true);
       setError("");
 
-      const payload = {
-        title: form.title.trim(),
-        startTime: start.toISOString(),
-        endTime: end.toISOString(),
-      };
-
-      const response = await fetch("/api/study-sessions", {
-        method: editingId ? "PUT" : "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(
-          editingId
-            ? {
-                id: editingId,
-                ...payload,
-                completed:
-                  sessions.find((item) => item.id === editingId)
-                    ?.completed ?? false,
-              }
-            : payload
-        ),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to save study session");
-      }
-
-      closeModal();
-      await loadPlanner();
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to save study session"
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function toggleComplete(session: StudySession) {
-    try {
-      setError("");
-
-      const response = await fetch("/api/study-sessions", {
-        method: "PUT",
+      const response = await fetch("/api/study-planner", {
+        method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          id: session.id,
-          title: session.title,
-          startTime: session.startTime,
-          endTime: session.endTime,
-          completed: !session.completed,
+          attendance: {
+            percentage:
+              dashboard?.attendance?.percentage ?? 0,
+            attended:
+              dashboard?.attendance?.present ?? 0,
+            total:
+              dashboard?.attendance?.total ?? 0,
+          },
+
+          assignments,
+
+          exams,
+
+          subjects: subjects.map((subject) => ({
+            name: subject.name,
+            percentage: subject.percentage,
+            attendance: subject.attendance,
+          })),
+
+          studyHours: weeklyHours,
         }),
       });
 
-      const data = await response.json();
+      const data =
+        (await response.json()) as PlannerResponse;
 
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to update session");
+      if (!response.ok || !data.success) {
+        throw new Error(
+          data.message ||
+            "Unable to generate study plan."
+        );
       }
 
-      await loadPlanner();
+      setPlan(data.plan || "");
     } catch (err) {
+      console.error(err);
+
       setError(
-        err instanceof Error ? err.message : "Failed to update session"
+        err instanceof Error
+          ? err.message
+          : "Unable to generate your AI study plan."
       );
+    } finally {
+      setGenerating(false);
     }
   }
 
-  async function deleteSession(id: string) {
-    const confirmed = window.confirm(
-      "Are you sure you want to delete this study session?"
-    );
+  function formatDate(value?: string) {
+    if (!value) return "No date";
 
-    if (!confirmed) return;
+    const date = new Date(value);
 
-    try {
-      setError("");
-
-      const response = await fetch(
-        `/api/study-sessions?id=${encodeURIComponent(id)}`,
-        {
-          method: "DELETE",
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to delete session");
-      }
-
-      await loadPlanner();
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to delete session"
-      );
+    if (Number.isNaN(date.getTime())) {
+      return value;
     }
-  }
 
-  function moveDate(direction: number) {
-    setSelectedDate((current) => {
-      const next = new Date(current);
-      next.setDate(next.getDate() + direction);
-      return next;
+    return date.toLocaleDateString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
     });
   }
 
-  function goToday() {
-    setSelectedDate(new Date());
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-[#070b16] text-white">
+        <div className="mx-auto flex min-h-screen max-w-7xl items-center justify-center px-6">
+          <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-6 py-4">
+            <Loader2 className="h-5 w-5 animate-spin text-indigo-400" />
+
+            <span className="text-sm text-slate-300">
+              Loading your academic data...
+            </span>
+          </div>
+        </div>
+      </main>
+    );
   }
 
-  const goalPercentage = summary?.weeklyPercentage ?? 0;
-
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-900">
-      <div className="mx-auto max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8">
+    <main className="min-h-screen bg-[#070b16] text-white">
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
 
         {/* Header */}
-        <section className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <div className="mb-2 flex items-center gap-2 text-sm font-medium text-indigo-600">
-              <CalendarDays className="h-4 w-4" />
-              Academic Planner
-            </div>
+        <section className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-indigo-500/15 via-white/[0.04] to-cyan-500/10 p-6 shadow-2xl sm:p-8">
 
-            <h1 className="text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">
-              Study Planner
-            </h1>
+          <div className="absolute -right-24 -top-24 h-64 w-64 rounded-full bg-indigo-500/10 blur-3xl" />
 
-            <p className="mt-2 max-w-2xl text-sm text-slate-500 sm:text-base">
-              Organize your study sessions, stay consistent, and achieve your
-              weekly academic goals.
-            </p>
-          </div>
+          <div className="absolute -bottom-24 left-1/3 h-64 w-64 rounded-full bg-cyan-500/10 blur-3xl" />
 
-          <button
-            onClick={openAddModal}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700"
-          >
-            <Plus className="h-4 w-4" />
-            Add Study Session
-          </button>
-        </section>
+          <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
 
-        {/* Error */}
-        {error && (
-          <div className="mb-5 flex items-center justify-between rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            <span>{error}</span>
-            <button onClick={() => setError("")}>
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        )}
-
-        {/* Stats */}
-        <section className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <StatCard
-            icon={<Clock3 className="h-5 w-5" />}
-            label="Weekly Study Hours"
-            value={summary ? `${summary.weeklyHours}h` : "--"}
-            helper="Completed this week"
-          />
-
-          <StatCard
-            icon={<Target className="h-5 w-5" />}
-            label="Weekly Goal"
-            value={summary ? `${summary.weeklyGoalHours}h` : "--"}
-            helper={`${goalPercentage}% achieved`}
-          />
-
-          <StatCard
-            icon={<CalendarDays className="h-5 w-5" />}
-            label="Upcoming Sessions"
-            value={summary ? String(summary.upcomingCount) : "--"}
-            helper="Scheduled sessions"
-          />
-
-          <StatCard
-            icon={<CheckCircle2 className="h-5 w-5" />}
-            label="Completed"
-            value={summary ? String(summary.completedThisWeek) : "--"}
-            helper="Sessions this week"
-          />
-        </section>
-
-        {/* Goal */}
-        <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <div className="flex items-center gap-2">
-                <Target className="h-5 w-5 text-indigo-600" />
-                <h2 className="font-semibold text-slate-900">
-                  Weekly Study Goal
-                </h2>
+              <div className="mb-3 flex items-center gap-2 text-indigo-300">
+                <BrainCircuit className="h-5 w-5" />
+
+                <span className="text-xs font-bold uppercase tracking-[0.2em]">
+                  CampusMind AI
+                </span>
               </div>
 
-              <p className="mt-1 text-sm text-slate-500">
-                {summary
-                  ? summary.remainingHours > 0
-                    ? `${summary.remainingHours} hours remaining to reach your 20-hour goal.`
-                    : "Excellent! You have reached your weekly study goal."
-                  : "Loading your weekly progress..."}
+              <h1 className="text-3xl font-black tracking-tight sm:text-4xl">
+                AI Study Planner
+              </h1>
+
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400 sm:text-base">
+                Your academic data becomes a personalized study strategy.
+                Let AI decide what deserves your attention first.
               </p>
             </div>
 
-            <div className="text-right">
-              <span className="text-2xl font-bold text-slate-950">
-                {goalPercentage}%
-              </span>
-            </div>
-          </div>
+            <button
+              type="button"
+              onClick={generatePlan}
+              disabled={generating}
+              className="group inline-flex items-center justify-center gap-2 rounded-2xl bg-indigo-500 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-500/20 transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {generating ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Sparkles className="h-4 w-4 transition group-hover:rotate-12" />
+              )}
 
-          <div className="h-3 overflow-hidden rounded-full bg-slate-100">
-            <div
-              className="h-full rounded-full bg-indigo-600 transition-all duration-500"
-              style={{
-                width: `${Math.min(100, goalPercentage)}%`,
-              }}
-            />
-          </div>
-
-          <div className="mt-3 flex justify-between text-xs text-slate-500">
-            <span>{summary?.weeklyHours ?? 0} hours completed</span>
-            <span>{summary?.weeklyGoalHours ?? 20} hours goal</span>
+              {generating
+                ? "Creating Plan..."
+                : "Generate My AI Plan"}
+            </button>
           </div>
         </section>
 
-        <div className="grid gap-6 xl:grid-cols-[1.5fr_1fr]">
+        {error && (
+          <div className="mt-5 rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+            {error}
+          </div>
+        )}
 
-          {/* Calendar / Day */}
-          <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+        {/* Academic Snapshot */}
+        <section className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
 
-            <div className="border-b border-slate-100 p-5 sm:p-6">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          {/* Attendance */}
+          <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-5">
+            <div className="flex items-center justify-between">
+              <div className="rounded-xl bg-indigo-500/10 p-2.5">
+                <Target className="h-5 w-5 text-indigo-300" />
+              </div>
 
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wider text-indigo-600">
-                    Daily Schedule
-                  </p>
+              <span className="text-xs text-slate-500">
+                Attendance
+              </span>
+            </div>
 
-                  <h2 className="mt-1 text-xl font-bold text-slate-950">
-                    {selectedDate.toLocaleDateString("en-IN", {
-                      weekday: "long",
-                      day: "numeric",
-                      month: "long",
-                    })}
+            <p className="mt-5 text-3xl font-black">
+              {dashboard?.attendance?.percentage ?? 0}%
+            </p>
+
+            <p className="mt-1 text-xs text-slate-500">
+              Academic attendance
+            </p>
+          </div>
+
+          {/* Assignments */}
+          <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-5">
+            <div className="flex items-center justify-between">
+              <div className="rounded-xl bg-amber-500/10 p-2.5">
+                <ClipboardList className="h-5 w-5 text-amber-300" />
+              </div>
+
+              <span className="text-xs text-slate-500">
+                Assignments
+              </span>
+            </div>
+
+            <p className="mt-5 text-3xl font-black">
+              {dashboard?.assignments?.pending ?? pendingAssignments.length}
+            </p>
+
+            <p className="mt-1 text-xs text-slate-500">
+              Pending assignments
+            </p>
+          </div>
+
+          {/* Exams */}
+          <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-5">
+            <div className="flex items-center justify-between">
+              <div className="rounded-xl bg-rose-500/10 p-2.5">
+                <GraduationCap className="h-5 w-5 text-rose-300" />
+              </div>
+
+              <span className="text-xs text-slate-500">
+                Exams
+              </span>
+            </div>
+
+            <p className="mt-5 text-3xl font-black">
+              {dashboard?.exams?.upcoming ?? exams.length}
+            </p>
+
+            <p className="mt-1 text-xs text-slate-500">
+              Upcoming examinations
+            </p>
+          </div>
+
+          {/* Study */}
+          <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-5">
+            <div className="flex items-center justify-between">
+              <div className="rounded-xl bg-emerald-500/10 p-2.5">
+                <Clock3 className="h-5 w-5 text-emerald-300" />
+              </div>
+
+              <span className="text-xs text-slate-500">
+                Study
+              </span>
+            </div>
+
+            <p className="mt-5 text-3xl font-black">
+              {weeklyHours}
+
+              <span className="ml-1 text-base font-medium text-slate-500">
+                / {goalHours}h
+              </span>
+            </p>
+
+            <p className="mt-1 text-xs text-slate-500">
+              Weekly study progress
+            </p>
+          </div>
+        </section>
+
+        {/* AI Plan + Today's Focus */}
+        <section className="mt-6 grid gap-6 lg:grid-cols-[1.35fr_0.65fr]">
+
+          {/* AI Plan */}
+          <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-5 sm:p-6">
+
+            <div className="flex items-start justify-between gap-4">
+
+              <div>
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-5 w-5 text-indigo-300" />
+
+                  <h2 className="text-lg font-bold">
+                    Your AI Plan
                   </h2>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => moveDate(-1)}
-                    className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-50"
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </button>
-
-                  <button
-                    onClick={goToday}
-                    className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                  >
-                    Today
-                  </button>
-
-                  <button
-                    onClick={() => moveDate(1)}
-                    className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-50"
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </button>
-                </div>
-
-              </div>
-            </div>
-
-            <div className="p-5 sm:p-6">
-              {loading ? (
-                <div className="flex min-h-[300px] items-center justify-center">
-                  <Loader2 className="h-7 w-7 animate-spin text-indigo-600" />
-                </div>
-              ) : selectedDaySessions.length === 0 ? (
-                <div className="flex min-h-[300px] flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 px-6 text-center">
-                  <div className="mb-4 rounded-full bg-indigo-50 p-4">
-                    <BookOpen className="h-7 w-7 text-indigo-600" />
-                  </div>
-
-                  <h3 className="font-semibold text-slate-900">
-                    No study sessions planned
-                  </h3>
-
-                  <p className="mt-1 max-w-sm text-sm text-slate-500">
-                    Create a focused study session for this day and keep your
-                    academic progress on track.
-                  </p>
-
-                  <button
-                    onClick={openAddModal}
-                    className="mt-5 inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700"
-                  >
-                    <Plus className="h-4 w-4" />
-                    Add Session
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {selectedDaySessions.map((session) => (
-                    <SessionRow
-                      key={session.id}
-                      session={session}
-                      onComplete={() => toggleComplete(session)}
-                      onEdit={() => openEditModal(session)}
-                      onDelete={() => deleteSession(session.id)}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          </section>
-
-          {/* Right column */}
-          <div className="space-y-6">
-
-            {/* Upcoming */}
-            <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-              <div className="border-b border-slate-100 p-5">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="font-bold text-slate-950">
-                      Upcoming Sessions
-                    </h2>
-                    <p className="mt-1 text-xs text-slate-500">
-                      Your next planned study blocks
-                    </p>
-                  </div>
-
-                  <Clock3 className="h-5 w-5 text-indigo-600" />
-                </div>
-              </div>
-
-              <div className="p-5">
-                {upcomingSessions.length === 0 ? (
-                  <p className="py-8 text-center text-sm text-slate-500">
-                    No upcoming study sessions.
-                  </p>
-                ) : (
-                  <div className="space-y-3">
-                    {upcomingSessions.map((session) => (
-                      <div
-                        key={session.id}
-                        className="rounded-xl border border-slate-100 bg-slate-50 p-4"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold text-slate-900">
-                              {session.title}
-                            </p>
-
-                            <p className="mt-1 text-xs text-slate-500">
-                              {formatDate(session.startTime)}
-                            </p>
-
-                            <p className="mt-1 text-xs font-medium text-indigo-600">
-                              {formatTime(session.startTime)} –{" "}
-                              {formatTime(session.endTime)}
-                            </p>
-                          </div>
-
-                          <span className="shrink-0 rounded-lg bg-white px-2 py-1 text-xs font-semibold text-slate-600 shadow-sm">
-                            {getDuration(
-                              session.startTime,
-                              session.endTime
-                            ).toFixed(1)}
-                            h
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </section>
-
-            {/* Recent completed */}
-            <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-              <div className="border-b border-slate-100 p-5">
-                <h2 className="font-bold text-slate-950">
-                  Completed Sessions
-                </h2>
-
                 <p className="mt-1 text-xs text-slate-500">
-                  Your recent academic progress
+                  Generated from your current academic workload
                 </p>
               </div>
 
-              <div className="p-5">
-                {completedSessions.length === 0 ? (
-                  <p className="py-8 text-center text-sm text-slate-500">
-                    No completed sessions yet.
-                  </p>
-                ) : (
-                  <div className="space-y-3">
-                    {completedSessions
-                      .slice(-5)
-                      .reverse()
-                      .map((session) => (
-                        <div
-                          key={session.id}
-                          className="flex items-center gap-3 rounded-xl border border-slate-100 p-3"
-                        >
-                          <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-500" />
-
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-semibold text-slate-800">
-                              {session.title}
-                            </p>
-
-                            <p className="mt-1 text-xs text-slate-500">
-                              {formatDate(session.startTime)}
-                            </p>
-                          </div>
-
-                          <span className="text-xs font-semibold text-emerald-600">
-                            Done
-                          </span>
-                        </div>
-                      ))}
-                  </div>
-                )}
-              </div>
-            </section>
-
-          </div>
-        </div>
-      </div>
-
-      {/* Modal */}
-      {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl">
-
-            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-              <div>
-                <h2 className="font-bold text-slate-950">
-                  {editingId ? "Edit Study Session" : "Add Study Session"}
-                </h2>
-
-                <p className="mt-1 text-xs text-slate-500">
-                  Plan your focused academic study time.
-                </p>
-              </div>
-
-              <button
-                onClick={closeModal}
-                className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="space-y-5 p-5">
-
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-700">
-                  Study Session
-                </label>
-
-                <input
-                  value={form.title}
-                  onChange={(event) =>
-                    setForm({
-                      ...form,
-                      title: event.target.value,
-                    })
-                  }
-                  placeholder="e.g. Database Management Revision"
-                  className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-                />
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-700">
-                  Date
-                </label>
-
-                <input
-                  type="date"
-                  value={form.date}
-                  onChange={(event) =>
-                    setForm({
-                      ...form,
-                      date: event.target.value,
-                    })
-                  }
-                  className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="mb-2 block text-sm font-semibold text-slate-700">
-                    Start Time
-                  </label>
-
-                  <input
-                    type="time"
-                    value={form.startTime}
-                    onChange={(event) =>
-                      setForm({
-                        ...form,
-                        startTime: event.target.value,
-                      })
-                    }
-                    className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm font-semibold text-slate-700">
-                    End Time
-                  </label>
-
-                  <input
-                    type="time"
-                    value={form.endTime}
-                    onChange={(event) =>
-                      setForm({
-                        ...form,
-                        endTime: event.target.value,
-                      })
-                    }
-                    className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-                  />
-                </div>
-              </div>
-
-              {form.startTime && form.endTime && (
-                <div className="rounded-xl bg-indigo-50 px-4 py-3 text-sm text-indigo-700">
-                  Planned duration:{" "}
-                  <strong>
-                    {getDuration(
-                      `${form.date}T${form.startTime}`,
-                      `${form.date}T${form.endTime}`
-                    ).toFixed(1)}{" "}
-                    hours
-                  </strong>
-                </div>
-              )}
-
-              <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
+              {plan && (
                 <button
-                  onClick={closeModal}
-                  disabled={saving}
-                  className="h-11 rounded-xl border border-slate-200 px-5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  type="button"
+                  onClick={generatePlan}
+                  disabled={generating}
+                  className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-slate-300 transition hover:bg-white/[0.08]"
                 >
-                  Cancel
+                  <RefreshCw
+                    className={`h-3.5 w-3.5 ${
+                      generating ? "animate-spin" : ""
+                    }`}
+                  />
+
+                  Regenerate
                 </button>
+              )}
+            </div>
+
+            {!plan ? (
+              <div className="mt-6 rounded-2xl border border-dashed border-white/10 bg-black/10 p-8 text-center">
+
+                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-500/10">
+                  <BrainCircuit className="h-7 w-7 text-indigo-300" />
+                </div>
+
+                <h3 className="mt-4 text-base font-bold">
+                  Your personalized plan is waiting
+                </h3>
+
+                <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
+                  CampusMind AI will analyze your attendance,
+                  assignments, exams, subjects and study progress.
+                </p>
 
                 <button
-                  onClick={saveSession}
-                  disabled={saving}
-                  className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  type="button"
+                  onClick={generatePlan}
+                  disabled={generating}
+                  className="mt-5 inline-flex items-center gap-2 rounded-xl bg-indigo-500 px-4 py-2.5 text-sm font-bold transition hover:bg-indigo-400 disabled:opacity-60"
                 >
-                  {saving && (
+                  {generating ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-4 w-4" />
                   )}
 
-                  {editingId ? "Save Changes" : "Create Session"}
+                  Create Study Strategy
                 </button>
+              </div>
+            ) : (
+              <div className="mt-6 whitespace-pre-wrap rounded-2xl border border-indigo-400/10 bg-indigo-500/[0.04] p-5 text-sm leading-7 text-slate-300">
+                {plan}
+              </div>
+            )}
+          </div>
+
+          {/* Today's Focus */}
+          <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-5 sm:p-6">
+
+            <div className="flex items-center gap-2">
+              <Target className="h-5 w-5 text-amber-300" />
+
+              <h2 className="text-lg font-bold">
+                Today's Focus
+              </h2>
+            </div>
+
+            <div className="mt-5 space-y-3">
+
+              <div className="rounded-2xl border border-rose-400/10 bg-rose-500/[0.05] p-4">
+                <div className="flex items-center gap-2">
+                  <ClipboardList className="h-4 w-4 text-rose-300" />
+
+                  <span className="text-xs font-bold uppercase tracking-wider text-rose-200">
+                    High Priority
+                  </span>
+                </div>
+
+                <p className="mt-2 text-2xl font-black">
+                  {highPriorityAssignments.length}
+                </p>
+
+                <p className="mt-1 text-xs text-slate-500">
+                  assignments need attention
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-indigo-400/10 bg-indigo-500/[0.05] p-4">
+                <div className="flex items-center gap-2">
+                  <BookOpen className="h-4 w-4 text-indigo-300" />
+
+                  <span className="text-xs font-bold uppercase tracking-wider text-indigo-200">
+                    Subjects
+                  </span>
+                </div>
+
+                <p className="mt-2 text-2xl font-black">
+                  {subjects.length}
+                </p>
+
+                <p className="mt-1 text-xs text-slate-500">
+                  subjects available for planning
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-emerald-400/10 bg-emerald-500/[0.05] p-4">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-300" />
+
+                  <span className="text-xs font-bold uppercase tracking-wider text-emerald-200">
+                    Study Goal
+                  </span>
+                </div>
+
+                <p className="mt-2 text-2xl font-black">
+                  {studyPercentage}%
+                </p>
+
+                <p className="mt-1 text-xs text-slate-500">
+                  weekly study goal completed
+                </p>
               </div>
             </div>
           </div>
-        </div>
-      )}
-    </main>
-  );
-}
+        </section>
 
-function StatCard({
-  icon,
-  label,
-  value,
-  helper,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  helper: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="mb-4 flex items-center justify-between">
-        <div className="rounded-xl bg-indigo-50 p-2.5 text-indigo-600">
-          {icon}
-        </div>
-      </div>
+        {/* Assignment + Exam */}
+        <section className="mt-6 grid gap-6 lg:grid-cols-2">
 
-      <p className="text-sm font-medium text-slate-500">{label}</p>
+          {/* Assignment Priorities */}
+          <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-5 sm:p-6">
 
-      <p className="mt-1 text-2xl font-bold text-slate-950">
-        {value}
-      </p>
+            <div className="flex items-center justify-between">
 
-      <p className="mt-1 text-xs text-slate-400">{helper}</p>
-    </div>
-  );
-}
+              <div className="flex items-center gap-2">
+                <ClipboardList className="h-5 w-5 text-amber-300" />
 
-function SessionRow({
-  session,
-  onComplete,
-  onEdit,
-  onDelete,
-}: {
-  session: StudySession;
-  onComplete: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
-}) {
-  const duration = getDuration(session.startTime, session.endTime);
+                <h2 className="text-lg font-bold">
+                  Assignment Priorities
+                </h2>
+              </div>
 
-  return (
-    <div
-      className={`group rounded-xl border p-4 transition ${
-        session.completed
-          ? "border-emerald-100 bg-emerald-50/40"
-          : "border-slate-100 bg-slate-50 hover:border-indigo-100 hover:bg-indigo-50/30"
-      }`}
-    >
-      <div className="flex items-start gap-3">
-
-        <button
-          onClick={onComplete}
-          title={
-            session.completed
-              ? "Mark as incomplete"
-              : "Mark as completed"
-          }
-          className={`mt-0.5 shrink-0 rounded-full ${
-            session.completed
-              ? "text-emerald-500"
-              : "text-slate-300 hover:text-indigo-500"
-          }`}
-        >
-          <CheckCircle2 className="h-6 w-6" />
-        </button>
-
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-            <h3
-              className={`font-semibold ${
-                session.completed
-                  ? "text-slate-500 line-through"
-                  : "text-slate-900"
-              }`}
-            >
-              {session.title}
-            </h3>
-
-            <span className="text-sm font-semibold text-indigo-600">
-              {duration.toFixed(1)}h
-            </span>
-          </div>
-
-          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
-            <span className="inline-flex items-center gap-1">
-              <Clock3 className="h-3.5 w-3.5" />
-              {formatTime(session.startTime)} –{" "}
-              {formatTime(session.endTime)}
-            </span>
-
-            {session.completed && (
-              <span className="font-semibold text-emerald-600">
-                Completed
+              <span className="text-xs text-slate-500">
+                {assignments.length} total
               </span>
-            )}
+            </div>
+
+            <div className="mt-5 space-y-3">
+
+              {assignments.slice(0, 5).map(
+                (assignment, index) => (
+                  <div
+                    key={
+                      assignment.id ||
+                      `${assignment.title}-${index}`
+                    }
+                    className="rounded-2xl border border-white/10 bg-black/10 p-4"
+                  >
+
+                    <div className="flex items-start justify-between gap-3">
+
+                      <div className="min-w-0">
+
+                        <p className="truncate text-sm font-bold text-slate-200">
+                          {assignment.title ||
+                            "Untitled Assignment"}
+                        </p>
+
+                        <p className="mt-1 text-xs text-slate-500">
+                          {assignment.subject ||
+                            "General"}
+                        </p>
+                      </div>
+
+                      <span
+                        className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold ${
+                          String(
+                            assignment.priority || ""
+                          ).toUpperCase() === "HIGH"
+                            ? "bg-rose-500/10 text-rose-300"
+                            : String(
+                                  assignment.priority ||
+                                    ""
+                                ).toUpperCase() === "LOW"
+                              ? "bg-slate-500/10 text-slate-400"
+                              : "bg-amber-500/10 text-amber-300"
+                        }`}
+                      >
+                        {assignment.priority ||
+                          "MEDIUM"}
+                      </span>
+                    </div>
+
+                    <div className="mt-3 flex items-center justify-between text-xs">
+
+                      <span className="text-slate-500">
+                        {assignment.status ||
+                          "PENDING"}
+                      </span>
+
+                      <span className="text-slate-400">
+                        {formatDate(
+                          assignment.date
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                )
+              )}
+
+              {assignments.length === 0 && (
+                <div className="rounded-2xl border border-dashed border-white/10 p-6 text-center text-sm text-slate-500">
+                  No assignments available.
+                </div>
+              )}
+            </div>
           </div>
-        </div>
 
-        <div className="flex shrink-0 items-center gap-1 opacity-100 sm:opacity-0 sm:transition sm:group-hover:opacity-100">
-          <button
-            onClick={onEdit}
-            title="Edit"
-            className="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-indigo-600"
-          >
-            <Edit3 className="h-4 w-4" />
-          </button>
+          {/* Exam Preparation */}
+          <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-5 sm:p-6">
 
-          <button
-            onClick={onDelete}
-            title="Delete"
-            className="rounded-lg p-2 text-slate-400 hover:bg-white hover:text-red-600"
-          >
-            <Trash2 className="h-4 w-4" />
-          </button>
-        </div>
+            <div className="flex items-center justify-between">
+
+              <div className="flex items-center gap-2">
+                <GraduationCap className="h-5 w-5 text-rose-300" />
+
+                <h2 className="text-lg font-bold">
+                  Exam Preparation
+                </h2>
+              </div>
+
+              <span className="text-xs text-slate-500">
+                {exams.length} upcoming
+              </span>
+            </div>
+
+            <div className="mt-5 space-y-3">
+
+              {exams.slice(0, 5).map(
+                (exam, index) => (
+                  <div
+                    key={
+                      exam.id ||
+                      `${exam.title}-${index}`
+                    }
+                    className="rounded-2xl border border-white/10 bg-black/10 p-4"
+                  >
+
+                    <div className="flex items-start gap-3">
+
+                      <div className="rounded-xl bg-rose-500/10 p-2.5">
+                        <CalendarDays className="h-4 w-4 text-rose-300" />
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+
+                        <p className="truncate text-sm font-bold text-slate-200">
+                          {exam.title ||
+                            "Upcoming Exam"}
+                        </p>
+
+                        <p className="mt-1 text-xs text-slate-500">
+                          {exam.subject ||
+                            "General"}
+                        </p>
+
+                        <p className="mt-2 text-xs font-medium text-slate-400">
+                          {formatDate(
+                            exam.date
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )
+              )}
+
+              {exams.length === 0 && (
+                <div className="rounded-2xl border border-dashed border-white/10 p-6 text-center text-sm text-slate-500">
+                  No upcoming exams available.
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+
+        {/* Smart Tip */}
+        <section className="mt-6 rounded-3xl border border-cyan-400/10 bg-cyan-500/[0.04] p-5 sm:p-6">
+
+          <div className="flex gap-4">
+
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-cyan-500/10">
+              <Lightbulb className="h-5 w-5 text-cyan-300" />
+            </div>
+
+            <div>
+              <h3 className="text-sm font-bold text-cyan-100">
+                Smart Study Tip
+              </h3>
+
+              <p className="mt-1 text-sm leading-6 text-slate-400">
+                Study your highest-priority task first,
+                then move to your weakest subject while
+                your concentration is still high.
+              </p>
+            </div>
+          </div>
+        </section>
 
       </div>
-    </div>
+    </main>
   );
 }

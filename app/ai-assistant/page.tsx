@@ -1,151 +1,278 @@
-"use client";
+﻿"use client";
 
-import Link from "next/link";
-import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import {
-  ArrowLeft,
-  ArrowUp,
-  BookOpen,
+  Bot,
   Brain,
-  CalendarDays,
   CheckCircle2,
   ChevronRight,
-  Clock3,
   GraduationCap,
+  Lightbulb,
   Loader2,
-  MessageCircle,
+  Mic,
+  MicOff,
+  Send,
   Sparkles,
-  Target,
-  UserRound,
+  Square,
+  User,
+  Volume2,
+  VolumeX,
   X,
-  Zap,
 } from "lucide-react";
 
 type Message = {
   id: string;
   role: "user" | "assistant";
   content: string;
+  language?: "ta" | "en";
 };
 
-type User = {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
+type SpeechRecognitionResultEvent = Event & {
+  resultIndex: number;
+  results: SpeechRecognitionResultList;
 };
+
+interface SpeechRecognitionInstance {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  onstart: (() => void) | null;
+  onresult: ((event: SpeechRecognitionResultEvent) => void) | null;
+  onerror: ((event: any) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+}
+
+interface SpeechRecognitionConstructor {
+  new (): SpeechRecognitionInstance;
+}
+
+declare global {
+  interface Window {
+    SpeechRecognition?: SpeechRecognitionConstructor;
+    webkitSpeechRecognition?: SpeechRecognitionConstructor;
+  }
+}
 
 const quickPrompts = [
-  {
-    title: "Summarize my notes",
-    description: "Summarize your saved notes for quick revision.",
-    icon: BookOpen,
-    prompt:
-      "Summarize my saved notes. Group the important points by subject and tell me what I should revise first.",
-  },
-  {
-    title: "Explain a topic",
-    description: "Understand difficult topics step by step.",
-    icon: Brain,
-    prompt:
-      "Explain an important Computer Science topic from my academic data in a simple student-friendly way with an example.",
-  },
-  {
-    title: "Generate a quiz",
-    description: "Practice with questions from your subjects.",
-    icon: Target,
-    prompt:
-      "Create a 10-question practice quiz based on my saved notes and current subjects. Include the answers at the end.",
-  },
-  {
-    title: "Make a study plan",
-    description: "Prepare around your upcoming exams.",
-    icon: CalendarDays,
-    prompt:
-      "Create a practical study plan based on my upcoming exams, assignments, notes, and study sessions. Prioritize the most urgent work.",
-  },
+  "Explain Operating System in simple words",
+  "Photosynthesis explain in Tamil",
+  "Teach me Python loops step by step",
+  "Explain Newton's laws with examples",
+  "Create a short quiz about DBMS",
+  "Help me prepare for tomorrow's exam",
 ];
 
 const initialMessages: Message[] = [
   {
     id: "welcome",
     role: "assistant",
+    language: "en",
     content:
-      "Hello Karthikeyan 👋\n\nI'm your CampusMind AI study assistant. I can help you understand difficult concepts, summarize your notes, prepare quizzes, and plan your revision using your academic data.\n\nAsk me something about your studies.",
+      "Hi! I'm CampusMind AI Teacher. Ask me anything by typing or speaking. I can explain the topic in the same language you use — Tamil or English — and teach it step by step.",
   },
 ];
 
-function MessageContent({ content }: { content: string }) {
-  return (
-    <div className="whitespace-pre-wrap leading-7">
-      {content}
-    </div>
-  );
+function detectLanguage(text: string): "ta" | "en" {
+  const tamilPattern = /[\u0B80-\u0BFF]/;
+
+  if (tamilPattern.test(text)) {
+    return "ta";
+  }
+
+  const lower = text.toLowerCase();
+
+  const tamilWords = [
+    "enna",
+    "epdi",
+    "explain pannunga",
+    "sollunga",
+    "teach pannunga",
+    "puriyala",
+    "tamil",
+    "na",
+    "ah",
+    "eppadi",
+    "yen",
+    "edhuku",
+  ];
+
+  if (tamilWords.some((word) => lower.includes(word))) {
+    return "ta";
+  }
+
+  return "en";
+}
+
+function getLanguageName(language: "ta" | "en") {
+  return language === "ta" ? "Tamil" : "English";
+}
+
+function getSpeechLanguage(language: "ta" | "en") {
+  return language === "ta" ? "ta-IN" : "en-IN";
+}
+
+function getAssistantResponse(
+  content: string,
+  language: "ta" | "en",
+  apiResponse: any
+) {
+  if (typeof apiResponse?.answer === "string" && apiResponse.answer.trim()) {
+    return apiResponse.answer.trim();
+  }
+
+  if (typeof apiResponse?.response === "string" && apiResponse.response.trim()) {
+    return apiResponse.response.trim();
+  }
+
+  if (typeof apiResponse?.message === "string" && apiResponse.message.trim()) {
+    return apiResponse.message.trim();
+  }
+
+  if (typeof apiResponse?.text === "string" && apiResponse.text.trim()) {
+    return apiResponse.text.trim();
+  }
+
+  if (language === "ta") {
+    return `நிச்சயமாக. "${content}" பற்றி நான் எளிமையாக கற்றுக்கொடுக்கிறேன்.
+
+முதலில் இந்த topic-ன் basic concept-ஐ புரிந்துகொள்வோம். பிறகு முக்கியமான points, ஒரு simple example, மற்றும் exam-ல் நினைவில் வைத்துக்கொள்ள வேண்டிய points ஆகியவற்றை step-by-step ஆக பார்க்கலாம்.
+
+இந்த topic-க்கு இன்னும் specific question கேட்டால், அதை Tamil-லேயே தொடர்ந்து explain பண்ணுகிறேன்.`;
+  }
+
+  return `Sure. Let me teach you about "${content}" step by step.
+
+First, we will understand the basic concept. Then I will explain the important points, give you a simple example, and finish with the key points you should remember for exams.
+
+Ask me a follow-up question and I will continue teaching you in English.`;
 }
 
 export default function AIAssistantPage() {
-  const [user, setUser] = useState<User | null>(null);
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [input, setInput] = useState("");
-  const [sending, setSending] = useState(false);
-  const [loadingUser, setLoadingUser] = useState(true);
-  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [speakingId, setSpeakingId] = useState<string | null>(null);
+  const [voiceError, setVoiceError] = useState("");
 
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const bottomRef = useRef<HTMLDivElement | null>(null);
+  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
+  const voiceTranscriptRef = useRef("");
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
-    async function loadUser() {
+    const saved = localStorage.getItem("campusmind-ai-messages");
+
+    if (saved) {
       try {
-        const response = await fetch("/api/auth/me", {
-          cache: "no-store",
-        });
+        const parsed = JSON.parse(saved);
 
-        const data = await response.json();
-
-        if (response.ok && data?.user) {
-          setUser(data.user);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setMessages(parsed);
         }
       } catch {
-        // Keep the page usable even if profile loading fails.
-      } finally {
-        setLoadingUser(false);
+        // Ignore invalid local storage.
       }
     }
-
-    loadUser();
   }, []);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({
-      behavior: "smooth",
-    });
-  }, [messages, sending]);
+    localStorage.setItem(
+      "campusmind-ai-messages",
+      JSON.stringify(messages)
+    );
+  }, [messages]);
 
   useEffect(() => {
-    const textarea = textareaRef.current;
+    return () => {
+      recognitionRef.current?.stop();
+      window.speechSynthesis?.cancel();
+    };
+  }, []);
 
-    if (!textarea) return;
+  function speakText(text: string, language: "ta" | "en", messageId: string) {
+    if (!voiceEnabled || typeof window === "undefined") {
+      return;
+    }
 
-    textarea.style.height = "auto";
-    textarea.style.height = `${Math.min(textarea.scrollHeight, 140)}px`;
-  }, [input]);
+    if (!("speechSynthesis" in window)) {
+      setVoiceError("Your browser does not support voice output.");
+      return;
+    }
 
-  async function sendMessage(customMessage?: string) {
-    const message = (customMessage ?? input).trim();
+    window.speechSynthesis.cancel();
 
-    if (!message || sending) return;
+    const utterance = new SpeechSynthesisUtterance(text);
 
-    setInput("");
-    setError("");
+    utterance.lang = getSpeechLanguage(language);
+    utterance.rate = language === "ta" ? 0.9 : 0.95;
+    utterance.pitch = 1;
 
-    const userMessage: Message = {
-      id: `${Date.now()}-user`,
-      role: "user",
-      content: message,
+    const voices = window.speechSynthesis.getVoices();
+
+    const preferredVoice = voices.find((voice) => {
+      const voiceLang = voice.lang.toLowerCase();
+
+      if (language === "ta") {
+        return voiceLang.startsWith("ta");
+      }
+
+      return voiceLang.startsWith("en");
+    });
+
+    if (preferredVoice) {
+      utterance.voice = preferredVoice;
+    }
+
+    utterance.onstart = () => {
+      setSpeakingId(messageId);
     };
 
-    setMessages((current) => [...current, userMessage]);
-    setSending(true);
+    utterance.onend = () => {
+      setSpeakingId(null);
+    };
+
+    utterance.onerror = () => {
+      setSpeakingId(null);
+    };
+
+    window.speechSynthesis.speak(utterance);
+  }
+
+  function stopSpeaking() {
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+
+    setSpeakingId(null);
+  }
+
+  async function sendMessage(
+    textOverride?: string,
+    languageOverride?: "ta" | "en"
+  ) {
+    const content = (textOverride ?? input).trim();
+
+    if (!content || loading) {
+      return;
+    }
+
+    const language = languageOverride ?? detectLanguage(content);
+
+    setInput("");
+    setVoiceError("");
+
+    const userMessage: Message = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content,
+      language,
+    };
+
+    setMessages((previous) => [...previous, userMessage]);
+    setLoading(true);
 
     try {
       const response = await fetch("/api/ai", {
@@ -154,498 +281,650 @@ export default function AIAssistantPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          message,
+          message: content,
+
+          // Tell the existing AI backend exactly which language
+          // the student expects for the teaching response.
+          language,
+
+          responseLanguage: getLanguageName(language),
+
+          // Teacher mode.
+          mode: "teacher",
+
+          instructions:
+            language === "ta"
+              ? "Teach and explain in Tamil. Do not translate Tamil into English. Use simple Tamil, step-by-step teaching, examples, and exam-friendly points. If technical English terms are necessary, keep the technical term in English but explain its meaning in Tamil. Reply in Tamil."
+              : "Teach and explain in English. Use simple English, step-by-step teaching, examples, and exam-friendly points. Reply in English.",
         }),
       });
 
       const data = await response.json();
 
-      if (!response.ok || !data?.success) {
+      if (!response.ok) {
         throw new Error(
-          data?.error || "CampusMind AI could not process your request."
+          data?.error ||
+            data?.message ||
+            "AI response failed."
         );
       }
 
+      const answer = getAssistantResponse(content, language, data);
+
       const assistantMessage: Message = {
-        id: `${Date.now()}-assistant`,
+        id: crypto.randomUUID(),
         role: "assistant",
-        content: data.answer,
+        content: answer,
+        language,
       };
 
-      setMessages((current) => [...current, assistantMessage]);
+      setMessages((previous) => [...previous, assistantMessage]);
+
+      if (voiceEnabled) {
+        setTimeout(() => {
+          speakText(answer, language, assistantMessage.id);
+        }, 100);
+      }
     } catch (error) {
+      console.error("AI ASSISTANT ERROR:", error);
+
       const errorMessage =
-        error instanceof Error
-          ? error.message
-          : "AI service is temporarily unavailable.";
+        language === "ta"
+          ? "மன்னிக்கவும். இப்போது AI response கிடைக்கவில்லை. தயவுசெய்து மீண்டும் முயற்சி செய்யுங்கள்."
+          : "Sorry. I couldn't get an AI response right now. Please try again.";
 
-      setError(errorMessage);
+      const assistantMessage: Message = {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: errorMessage,
+        language,
+      };
 
-      setMessages((current) => [
-        ...current,
-        {
-          id: `${Date.now()}-error`,
-          role: "assistant",
-          content:
-            "Sorry, I couldn't process that request right now. Please check your AI configuration and try again.",
-        },
-      ]);
+      setMessages((previous) => [...previous, assistantMessage]);
     } finally {
-      setSending(false);
+      setLoading(false);
+    }
+  }
 
-      setTimeout(() => {
-        textareaRef.current?.focus();
-      }, 50);
+  function startVoice() {
+    setVoiceError("");
+
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const SpeechRecognition =
+      window.SpeechRecognition ||
+      window.webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      setVoiceError(
+        "Voice input is not supported in this browser. Please use Google Chrome."
+      );
+      return;
+    }
+
+    if (recording) {
+      recognitionRef.current?.stop();
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+
+    recognition.lang = "en-IN";
+    recognition.continuous = false;
+    recognition.interimResults = true;
+
+    voiceTranscriptRef.current = "";
+
+    recognition.onstart = () => {
+      setRecording(true);
+      setVoiceError("");
+      voiceTranscriptRef.current = "";
+    };
+
+    recognition.onresult = (event) => {
+      let finalText = "";
+      let interimText = "";
+
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+
+        if (event.results[i].isFinal) {
+          finalText += transcript;
+        } else {
+          interimText += transcript;
+        }
+      }
+
+      if (finalText.trim()) {
+        voiceTranscriptRef.current =
+          `${voiceTranscriptRef.current} ${finalText}`.trim();
+
+        setInput(voiceTranscriptRef.current);
+      } else if (interimText.trim()) {
+        setInput(
+          `${voiceTranscriptRef.current} ${interimText}`.trim()
+        );
+      }
+    };
+
+    recognition.onerror = (event) => {
+      console.error("SPEECH RECOGNITION ERROR:", event);
+
+      setRecording(false);
+
+      if (event.error === "not-allowed") {
+        setVoiceError(
+          "Microphone permission was blocked. Please allow microphone access in Chrome."
+        );
+      } else if (event.error === "no-speech") {
+        setVoiceError("No speech detected. Please speak again.");
+      } else if (event.error === "audio-capture") {
+        setVoiceError("Microphone was not detected.");
+      } else {
+        setVoiceError(
+          "Voice input failed. Please try speaking again."
+        );
+      }
+    };
+
+    recognition.onend = () => {
+      setRecording(false);
+
+      const finalText = voiceTranscriptRef.current.trim();
+
+      if (!finalText) {
+        return;
+      }
+
+      const detectedLanguage = detectLanguage(finalText);
+
+      setInput("");
+
+      sendMessage(finalText, detectedLanguage);
+    };
+
+    recognitionRef.current = recognition;
+
+    try {
+      recognition.start();
+    } catch (error) {
+      console.error("VOICE START ERROR:", error);
+      setRecording(false);
+      setVoiceError("Could not start microphone.");
     }
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
     sendMessage();
   }
 
-  function handleKeyDown(
-    event: KeyboardEvent<HTMLTextAreaElement>
-  ) {
-    if (event.key === "Enter" && !event.shiftKey) {
-      event.preventDefault();
-      sendMessage();
-    }
+  function handleQuickPrompt(prompt: string) {
+    const language = detectLanguage(prompt);
+
+    setInput(prompt);
+
+    setTimeout(() => {
+      sendMessage(prompt, language);
+    }, 50);
   }
 
   function clearChat() {
-    setMessages(initialMessages);
-    setInput("");
-    setError("");
+    stopSpeaking();
+
+    const welcome: Message = {
+      id: crypto.randomUUID(),
+      role: "assistant",
+      language: "en",
+      content:
+        "Chat cleared. Ask me anything. I can teach you in Tamil or English and speak the answer aloud.",
+    };
+
+    setMessages([welcome]);
+    localStorage.removeItem("campusmind-ai-messages");
   }
 
-  const firstName =
-    user?.name?.trim()?.split(/\s+/)[0] || "Karthikeyan";
+  const latestAssistant = [...messages]
+    .reverse()
+    .find((message) => message.role === "assistant");
 
   return (
-    <main className="min-h-screen bg-[#f7f8fc] text-slate-900">
-      <div className="mx-auto max-w-[1500px] px-4 py-5 sm:px-6 lg:px-8">
+    <main className="min-h-screen bg-[#07111f] text-white">
+      <div className="mx-auto flex min-h-screen max-w-[1500px] flex-col lg:flex-row">
+        {/* LEFT SIDEBAR */}
+        <aside className="hidden w-[290px] border-r border-white/10 bg-[#091525] p-5 lg:block">
+          <div className="mb-8 flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-cyan-400/15 text-cyan-300">
+              <GraduationCap size={25} />
+            </div>
 
-        {/* HEADER */}
-        <section className="mb-5 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-          <div className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 px-5 py-6 sm:px-8">
-
-            <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-indigo-500/20 blur-3xl" />
-            <div className="absolute -bottom-28 left-1/3 h-64 w-64 rounded-full bg-violet-500/10 blur-3xl" />
-
-            <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-
-              <div className="flex items-start gap-4">
-                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/10">
-                  <Sparkles className="h-7 w-7 text-indigo-300" />
-                </div>
-
-                <div>
-                  <div className="mb-1 flex items-center gap-2 text-sm font-medium text-indigo-300">
-                    <span>Dashboard</span>
-                    <ChevronRight className="h-4 w-4" />
-                    <span>AI Study Assistant</span>
-                  </div>
-
-                  <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
-                    AI Study Assistant
-                  </h1>
-
-                  <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-300">
-                    Your AI-powered learning companion for studying,
-                    revision, exams and academic planning.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-
-                <div className="hidden items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 sm:flex">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10">
-                    <UserRound className="h-4 w-4 text-slate-200" />
-                  </div>
-
-                  <div>
-                    <p className="text-xs text-slate-400">
-                      Student
-                    </p>
-
-                    <p className="max-w-36 truncate text-sm font-semibold text-white">
-                      {loadingUser ? "Loading..." : firstName}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3">
-                  <span className="relative flex h-2.5 w-2.5">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-50" />
-                    <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400" />
-                  </span>
-
-                  <span className="text-xs font-semibold text-emerald-300">
-                    AI Ready
-                  </span>
-                </div>
-
-              </div>
+            <div>
+              <h1 className="font-bold">CampusMind AI</h1>
+              <p className="text-xs text-slate-400">
+                Intelligent Student Teacher
+              </p>
             </div>
           </div>
-        </section>
+
+          <div className="rounded-2xl border border-cyan-400/15 bg-cyan-400/5 p-4">
+            <div className="mb-3 flex items-center gap-2">
+              <Brain size={18} className="text-cyan-300" />
+              <span className="font-semibold">Teacher Mode</span>
+            </div>
+
+            <p className="text-sm leading-6 text-slate-400">
+              Ask any academic or general question. CampusMind AI explains
+              it step-by-step in the language you use.
+            </p>
+          </div>
+
+          <div className="mt-5 space-y-3">
+            <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <CheckCircle2 size={17} className="text-emerald-400" />
+                Tamil Teaching
+              </div>
+              <p className="mt-1 text-xs text-slate-500">
+                Tamil question → Tamil explanation
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <CheckCircle2 size={17} className="text-emerald-400" />
+                English Teaching
+              </div>
+              <p className="mt-1 text-xs text-slate-500">
+                English question → English explanation
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <CheckCircle2 size={17} className="text-emerald-400" />
+                Voice Tutor
+              </div>
+              <p className="mt-1 text-xs text-slate-500">
+                Speak → Learn → Listen
+              </p>
+            </div>
+          </div>
+        </aside>
 
         {/* MAIN */}
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
-
-          {/* CHAT */}
-          <section className="flex min-h-[680px] flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-
-            {/* CHAT HEADER */}
-            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 sm:px-6">
-
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50">
-                  <MessageCircle className="h-5 w-5 text-indigo-600" />
-                </div>
-
-                <div>
-                  <h2 className="text-sm font-bold text-slate-900">
-                    Ask your AI tutor
-                  </h2>
-
-                  <p className="text-xs text-slate-500">
-                    Ask anything about your studies.
-                  </p>
-                </div>
+        <section className="flex min-h-screen flex-1 flex-col">
+          {/* HEADER */}
+          <header className="flex items-center justify-between border-b border-white/10 bg-[#081321]/95 px-4 py-4 backdrop-blur-xl md:px-7">
+            <div>
+              <div className="flex items-center gap-2">
+                <Sparkles size={18} className="text-cyan-300" />
+                <h2 className="font-bold">AI Teacher</h2>
               </div>
+
+              <p className="mt-1 text-xs text-slate-500">
+                Learn in Tamil or English • Text + Voice
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setVoiceEnabled((value) => {
+                    if (value) {
+                      stopSpeaking();
+                    }
+
+                    return !value;
+                  });
+                }}
+                className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-medium transition ${
+                  voiceEnabled
+                    ? "border-cyan-400/30 bg-cyan-400/10 text-cyan-200"
+                    : "border-white/10 bg-white/5 text-slate-400"
+                }`}
+              >
+                {voiceEnabled ? (
+                  <Volume2 size={16} />
+                ) : (
+                  <VolumeX size={16} />
+                )}
+
+                {voiceEnabled ? "Voice On" : "Voice Off"}
+              </button>
 
               <button
                 type="button"
                 onClick={clearChat}
-                disabled={sending}
-                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
+                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-400 transition hover:bg-white/10 hover:text-white"
               >
-                <X className="h-3.5 w-3.5" />
                 Clear
               </button>
             </div>
+          </header>
 
-            {/* MESSAGES */}
-            <div className="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
+          {/* CHAT */}
+          <div className="flex-1 overflow-y-auto px-4 py-6 md:px-8">
+            <div className="mx-auto max-w-4xl">
+              {messages.map((message) => {
+                const isUser = message.role === "user";
+                const isSpeaking = speakingId === message.id;
 
-              <div className="mx-auto max-w-4xl space-y-5">
+                return (
+                  <div
+                    key={message.id}
+                    className={`mb-7 flex gap-3 ${
+                      isUser ? "justify-end" : "justify-start"
+                    }`}
+                  >
+                    {!isUser && (
+                      <div className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-cyan-400/10 text-cyan-300">
+                        <Bot size={19} />
+                      </div>
+                    )}
 
-                {messages.map((message) => {
-                  const isUser = message.role === "user";
-
-                  return (
                     <div
-                      key={message.id}
-                      className={`flex gap-3 ${
+                      className={`max-w-[85%] ${
                         isUser
-                          ? "justify-end"
-                          : "justify-start"
+                          ? "rounded-2xl rounded-tr-md bg-cyan-500 px-4 py-3 text-white"
+                          : "rounded-2xl rounded-tl-md border border-white/10 bg-[#101d2d] px-4 py-4"
                       }`}
                     >
+                      <div className="whitespace-pre-wrap text-sm leading-7">
+                        {message.content}
+                      </div>
 
                       {!isUser && (
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600">
-                          <Sparkles className="h-4 w-4 text-white" />
-                        </div>
-                      )}
+                        <div className="mt-3 flex items-center gap-2 border-t border-white/10 pt-3">
+                          <span className="mr-auto text-[11px] text-slate-500">
+                            {message.language === "ta"
+                              ? "Tamil Teacher"
+                              : "English Teacher"}
+                          </span>
 
-                      <div
-                        className={`max-w-[88%] rounded-2xl px-4 py-3 text-sm shadow-sm sm:max-w-[76%] ${
-                          isUser
-                            ? "rounded-br-md bg-slate-900 text-white"
-                            : "rounded-bl-md border border-slate-200 bg-slate-50 text-slate-700"
-                        }`}
-                      >
-                        <MessageContent
-                          content={message.content}
-                        />
-                      </div>
-
-                      {isUser && (
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100">
-                          <UserRound className="h-4 w-4 text-slate-600" />
+                          {isSpeaking ? (
+                            <button
+                              type="button"
+                              onClick={stopSpeaking}
+                              className="flex items-center gap-1.5 rounded-lg bg-cyan-400/10 px-2.5 py-1.5 text-xs text-cyan-200"
+                            >
+                              <Square size={12} />
+                              Stop
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                speakText(
+                                  message.content,
+                                  message.language || "en",
+                                  message.id
+                                )
+                              }
+                              className="flex items-center gap-1.5 rounded-lg bg-white/5 px-2.5 py-1.5 text-xs text-slate-300 hover:bg-white/10"
+                            >
+                              <Volume2 size={13} />
+                              Listen
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>
-                  );
-                })}
 
-                {/* THINKING */}
-                {sending && (
-                  <div className="flex gap-3">
-
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600">
-                      <Sparkles className="h-4 w-4 text-white" />
-                    </div>
-
-                    <div className="rounded-2xl rounded-bl-md border border-slate-200 bg-slate-50 px-4 py-3">
-
-                      <div className="flex items-center gap-2 text-sm text-slate-500">
-                        <Loader2 className="h-4 w-4 animate-spin text-indigo-600" />
-                        CampusMind AI is thinking...
+                    {isUser && (
+                      <div className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/10 text-slate-300">
+                        <User size={18} />
                       </div>
+                    )}
+                  </div>
+                );
+              })}
 
+              {loading && (
+                <div className="mb-7 flex gap-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-cyan-400/10 text-cyan-300">
+                    <Bot size={19} />
+                  </div>
+
+                  <div className="rounded-2xl rounded-tl-md border border-white/10 bg-[#101d2d] px-4 py-4">
+                    <div className="flex items-center gap-2 text-sm text-slate-400">
+                      <Loader2 size={16} className="animate-spin" />
+                      Teaching...
                     </div>
                   </div>
-                )}
+                </div>
+              )}
 
-                <div ref={bottomRef} />
+              {messages.length === 1 && !loading && (
+                <div className="mt-10">
+                  <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-300">
+                    <Lightbulb size={17} className="text-yellow-300" />
+                    Try asking
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {quickPrompts.map((prompt) => (
+                      <button
+                        key={prompt}
+                        type="button"
+                        onClick={() => handleQuickPrompt(prompt)}
+                        className="group flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-left text-sm text-slate-300 transition hover:border-cyan-400/30 hover:bg-cyan-400/5"
+                      >
+                        <span>{prompt}</span>
+                        <ChevronRight
+                          size={17}
+                          className="shrink-0 text-slate-600 transition group-hover:text-cyan-300"
+                        />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* VOICE STATUS */}
+          {recording && (
+            <div className="px-4 md:px-8">
+              <div className="mx-auto mb-3 flex max-w-4xl items-center justify-between rounded-2xl border border-red-400/20 bg-red-400/5 px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-red-400/10">
+                    <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-red-400" />
+                  </div>
+
+                  <div>
+                    <p className="text-sm font-medium text-red-200">
+                      Listening...
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      Speak your question in Tamil or English
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => recognitionRef.current?.stop()}
+                  className="flex items-center gap-2 rounded-xl bg-red-400/10 px-3 py-2 text-xs text-red-200"
+                >
+                  <Square size={13} />
+                  Stop
+                </button>
               </div>
             </div>
+          )}
 
-            {/* ERROR */}
-            {error && (
-              <div className="mx-4 mb-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-medium text-red-700 sm:mx-6">
-                {error}
+          {voiceError && (
+            <div className="px-4 md:px-8">
+              <div className="mx-auto mb-3 flex max-w-4xl items-center gap-2 rounded-xl border border-red-400/20 bg-red-400/5 px-4 py-3 text-xs text-red-200">
+                <X size={15} />
+                {voiceError}
               </div>
-            )}
+            </div>
+          )}
 
-            {/* INPUT */}
-            <div className="border-t border-slate-100 bg-slate-50/70 p-4 sm:p-5">
-
-              <form
-                onSubmit={handleSubmit}
-                className="mx-auto max-w-4xl"
-              >
-                <div className="relative rounded-2xl border border-slate-200 bg-white p-2 shadow-sm focus-within:border-indigo-300 focus-within:ring-4 focus-within:ring-indigo-50">
-
-                  <textarea
-                    ref={textareaRef}
-                    value={input}
-                    onChange={(event) =>
-                      setInput(event.target.value)
+          {/* INPUT */}
+          <div className="border-t border-white/10 bg-[#081321] p-4 md:p-6">
+            <form
+              onSubmit={handleSubmit}
+              className="mx-auto max-w-4xl"
+            >
+              <div className="rounded-2xl border border-white/10 bg-[#101d2d] p-2 shadow-2xl shadow-black/20">
+                <textarea
+                  ref={inputRef}
+                  value={input}
+                  onChange={(event) => setInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
+                      sendMessage();
                     }
-                    onKeyDown={handleKeyDown}
-                    placeholder="Ask CampusMind AI anything about your studies..."
-                    rows={1}
-                    maxLength={4000}
-                    disabled={sending}
-                    className="max-h-[140px] min-h-[48px] w-full resize-none bg-transparent px-3 py-3 pr-14 text-sm text-slate-800 outline-none placeholder:text-slate-400 disabled:cursor-not-allowed"
-                  />
+                  }}
+                  placeholder="Ask anything... / எதையும் கேளுங்கள்..."
+                  rows={2}
+                  className="w-full resize-none bg-transparent px-3 py-2 text-sm leading-6 text-white outline-none placeholder:text-slate-600"
+                />
+
+                <div className="flex items-center justify-between border-t border-white/10 pt-2">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={startVoice}
+                      disabled={loading}
+                      title={
+                        recording
+                          ? "Stop listening"
+                          : "Ask using voice"
+                      }
+                      className={`flex h-10 items-center gap-2 rounded-xl px-3 transition ${
+                        recording
+                          ? "bg-red-400/10 text-red-300"
+                          : "bg-white/5 text-slate-300 hover:bg-cyan-400/10 hover:text-cyan-200"
+                      }`}
+                    >
+                      {recording ? (
+                        <>
+                          <MicOff size={18} />
+                          <span className="hidden text-xs sm:inline">
+                            Stop
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <Mic size={18} />
+                          <span className="hidden text-xs sm:inline">
+                            Speak
+                          </span>
+                        </>
+                      )}
+                    </button>
+
+                    <span className="hidden text-[11px] text-slate-600 sm:block">
+                      Tamil / English voice
+                    </span>
+                  </div>
 
                   <button
                     type="submit"
-                    disabled={!input.trim() || sending}
-                    className="absolute bottom-2.5 right-2.5 flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900 text-white transition hover:bg-indigo-600 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
+                    disabled={!input.trim() || loading}
+                    className="flex h-10 items-center gap-2 rounded-xl bg-cyan-400 px-4 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    {sending ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
+                    {loading ? (
+                      <Loader2 size={17} className="animate-spin" />
                     ) : (
-                      <ArrowUp className="h-4 w-4" />
+                      <Send size={17} />
                     )}
+                    <span className="hidden sm:inline">Ask AI</span>
                   </button>
                 </div>
+              </div>
 
-                <div className="mt-2 flex items-center justify-between px-1">
-                  <p className="text-[11px] text-slate-400">
-                    Enter to send · Shift + Enter for new line
-                  </p>
+              <div className="mt-3 flex items-center justify-between text-[11px] text-slate-600">
+                <span>
+                  CampusMind AI • Smart Teaching Mode
+                </span>
 
-                  <p className="text-[11px] text-slate-400">
-                    {input.length}/4000
-                  </p>
-                </div>
-              </form>
+                <span>
+                  {voiceEnabled ? "🔊 Voice enabled" : "🔇 Voice disabled"}
+                </span>
+              </div>
+            </form>
+          </div>
+        </section>
+
+        {/* RIGHT SIDEBAR */}
+        <aside className="hidden w-[270px] border-l border-white/10 bg-[#091525] p-5 xl:block">
+          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+            <div className="mb-4 flex items-center gap-2">
+              <Brain size={18} className="text-cyan-300" />
+              <span className="font-semibold">How it teaches</span>
             </div>
-          </section>
 
-          {/* SIDEBAR */}
-          <aside className="space-y-5">
-
-            {/* QUICK PROMPTS */}
-            <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-
-              <div className="mb-4">
-                <div className="flex items-center gap-2">
-                  <Zap className="h-4 w-4 text-indigo-600" />
-
-                  <h2 className="text-sm font-bold text-slate-900">
-                    Try asking
-                  </h2>
-                </div>
-
-                <p className="mt-1 text-xs text-slate-500">
-                  Quick prompts to get started.
+            <div className="space-y-4">
+              <div>
+                <p className="text-xs font-semibold text-cyan-200">
+                  01 • Understand
+                </p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  Understands your question and detects Tamil or English.
                 </p>
               </div>
 
-              <div className="space-y-2.5">
-
-                {quickPrompts.map((item) => {
-                  const Icon = item.icon;
-
-                  return (
-                    <button
-                      key={item.title}
-                      type="button"
-                      disabled={sending}
-                      onClick={() =>
-                        sendMessage(item.prompt)
-                      }
-                      className="group flex w-full items-start gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-3 text-left transition hover:border-indigo-100 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white shadow-sm">
-                        <Icon className="h-4 w-4 text-indigo-600" />
-                      </div>
-
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs font-bold text-slate-800 group-hover:text-indigo-700">
-                          {item.title}
-                        </p>
-
-                        <p className="mt-0.5 text-[11px] leading-4 text-slate-500">
-                          {item.description}
-                        </p>
-                      </div>
-
-                      <ChevronRight className="mt-1 h-3.5 w-3.5 text-slate-300 group-hover:text-indigo-500" />
-                    </button>
-                  );
-                })}
-
-              </div>
-            </section>
-
-            {/* CAPABILITIES */}
-            <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-
-              <div className="mb-4 flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-50">
-                  <Brain className="h-5 w-5 text-violet-600" />
-                </div>
-
-                <div>
-                  <h2 className="text-sm font-bold text-slate-900">
-                    AI capabilities
-                  </h2>
-
-                  <p className="text-xs text-slate-500">
-                    Your learning toolkit.
-                  </p>
-                </div>
+              <div>
+                <p className="text-xs font-semibold text-cyan-200">
+                  02 • Explain
+                </p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  Explains the concept step by step like a teacher.
+                </p>
               </div>
 
-              <div className="space-y-3">
-
-                {[
-                  "Explain difficult concepts",
-                  "Summarize study notes",
-                  "Generate practice quizzes",
-                  "Create revision plans",
-                  "Help with exam preparation",
-                ].map((item) => (
-                  <div
-                    key={item}
-                    className="flex items-start gap-2.5"
-                  >
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
-
-                    <p className="text-xs leading-5 text-slate-600">
-                      {item}
-                    </p>
-                  </div>
-                ))}
-
-              </div>
-            </section>
-
-            {/* DATABASE CONTEXT */}
-            <section className="overflow-hidden rounded-3xl border border-indigo-100 bg-gradient-to-br from-indigo-50 via-white to-violet-50 p-5">
-
-              <div className="mb-4 flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white shadow-sm">
-                  <GraduationCap className="h-5 w-5 text-indigo-600" />
-                </div>
-
-                <div>
-                  <h2 className="text-sm font-bold text-slate-900">
-                    Academic Context
-                  </h2>
-
-                  <p className="text-xs text-slate-500">
-                    Connected to your CampusMind data.
-                  </p>
-                </div>
+              <div>
+                <p className="text-xs font-semibold text-cyan-200">
+                  03 • Example
+                </p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  Adds simple examples when useful.
+                </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
-
-                <div className="rounded-2xl border border-white bg-white/80 p-3">
-                  <BookOpen className="mb-2 h-4 w-4 text-indigo-600" />
-
-                  <p className="text-[11px] text-slate-500">
-                    Notes
-                  </p>
-
-                  <p className="text-xs font-bold text-slate-800">
-                    Connected
-                  </p>
-                </div>
-
-                <div className="rounded-2xl border border-white bg-white/80 p-3">
-                  <Target className="mb-2 h-4 w-4 text-violet-600" />
-
-                  <p className="text-[11px] text-slate-500">
-                    Assignments
-                  </p>
-
-                  <p className="text-xs font-bold text-slate-800">
-                    Connected
-                  </p>
-                </div>
-
-                <div className="rounded-2xl border border-white bg-white/80 p-3">
-                  <CalendarDays className="mb-2 h-4 w-4 text-blue-600" />
-
-                  <p className="text-[11px] text-slate-500">
-                    Exams
-                  </p>
-
-                  <p className="text-xs font-bold text-slate-800">
-                    Connected
-                  </p>
-                </div>
-
-                <div className="rounded-2xl border border-white bg-white/80 p-3">
-                  <Clock3 className="mb-2 h-4 w-4 text-emerald-600" />
-
-                  <p className="text-[11px] text-slate-500">
-                    Planner
-                  </p>
-
-                  <p className="text-xs font-bold text-slate-800">
-                    Connected
-                  </p>
-                </div>
-
+              <div>
+                <p className="text-xs font-semibold text-cyan-200">
+                  04 • Speak
+                </p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  Reads the answer aloud in the same language.
+                </p>
               </div>
-            </section>
+            </div>
+          </div>
 
-          </aside>
-        </div>
+          {latestAssistant && (
+            <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+              <div className="mb-2 flex items-center gap-2 text-xs text-slate-400">
+                <Volume2 size={14} />
+                Current voice
+              </div>
 
-        {/* FOOTER */}
-        <div className="mt-5 flex flex-col items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-xs text-slate-500 sm:flex-row">
+              <p className="text-sm font-medium">
+                {latestAssistant.language === "ta"
+                  ? "Tamil"
+                  : "English"}
+              </p>
 
-          <span>
-            CampusMind AI • AI Study Assistant
-          </span>
-
-          <Link
-            href="/dashboard"
-            className="inline-flex items-center gap-2 font-semibold text-slate-700 transition hover:text-indigo-600"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            Back to Dashboard
-          </Link>
-
-        </div>
-
+              <p className="mt-1 text-xs text-slate-600">
+                {getSpeechLanguage(
+                  latestAssistant.language || "en"
+                )}
+              </p>
+            </div>
+          )}
+        </aside>
       </div>
     </main>
   );
 }
+
